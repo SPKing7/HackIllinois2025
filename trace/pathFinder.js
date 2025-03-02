@@ -26,7 +26,7 @@ export const getPathFromPoints = async (points) => {
     // Resample the path every 25 feet (7.62 meters)
     const resampled = resamplePath(points, 10);
     // Simplify the resampled path
-    const simplified = simplifyPath(resampled, 0.0001);
+    const simplified = simplifyPath(resampled, 0.0002);
 
     // Use the first and last points as origin and destination
     const origin = simplified[0];
