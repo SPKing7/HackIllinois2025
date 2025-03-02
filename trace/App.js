@@ -1,5 +1,6 @@
 // App.js
 import React, { useState, useRef, useEffect } from "react";
+import icon from "./assets/icon.png";
 import {
   StyleSheet,
   View,
@@ -449,9 +450,9 @@ export default function App() {
         distance: routeDistance,
         duration: routeDuration,
       });
-      
+
       setShowSaveModal(false);
-      setRouteName(''); // Clear the route name for next time
+      setRouteName(""); // Clear the route name for next time
       Alert.alert("Success", "Route saved successfully");
     } catch (error) {
       console.error("Error saving route:", error);
@@ -492,6 +493,10 @@ export default function App() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle={isNavigating ? "light-content" : "dark-content"} />
+      <View style={styles.logoContainer}>
+        <Image source={icon} style={styles.logo} />
+      </View>
+
       <MapView
         key={mapKey} // Add key prop to force re-render when it changes
         ref={mapRef}
@@ -662,9 +667,7 @@ export default function App() {
           {/* Toggle original path visibility button - only show when we have a calculated route */}
           {calculatedPath.length > 0 && (
             <TouchableOpacity
-              style={[
-                styles.button
-              ]}
+              style={[styles.button]}
               onPress={toggleOriginalPath}
             >
               <Text style={styles.buttonText}>
@@ -674,67 +677,71 @@ export default function App() {
           )}
 
           {/* Clear button */}
-                {calculatedPath.length > 0 && (
-                <TouchableOpacity
-                  style={[styles.button, styles.clearButton, { backgroundColor: 'red' }]}
-                  onPress={clearAll}
-                >
-                  <Text style={styles.buttonText}>Clear All</Text>
-                </TouchableOpacity>
-                )}
+          {calculatedPath.length > 0 && (
+            <TouchableOpacity
+              style={[
+                styles.button,
+                styles.clearButton,
+                { backgroundColor: "red" },
+              ]}
+              onPress={clearAll}
+            >
+              <Text style={styles.buttonText}>Clear All</Text>
+            </TouchableOpacity>
+          )}
 
-                {calculatedPath.length > 0 && (
-                <TouchableOpacity
-                  style={[styles.button]}
-                  onPress={() => setShowHistoryScreen(true)}
-                >
-                  <Text style={styles.buttonText}>View History</Text>
-                </TouchableOpacity>
-                )}
-              </View>
+          {calculatedPath.length > 0 && (
+            <TouchableOpacity
+              style={[styles.button]}
+              onPress={() => setShowHistoryScreen(true)}
+            >
+              <Text style={styles.buttonText}>View History</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
+      {isCalculating && (
+        <View style={styles.calculatingOverlay}>
+          <Text style={styles.calculatingText}>Calculating Route...</Text>
+        </View>
+      )}
+
+      {(routeDistance || routeDuration || remainingDistance !== null) && (
+        <View style={styles.infoOverlay}>
+          {remainingDistance !== null ? (
+            <>
+              <Text style={styles.infoText}>
+                Distance: {formatDistance(remainingDistance)}
+              </Text>
+              <Text style={styles.infoText}>
+                ETA: {eta ? formatETA(eta) : "--:--"}
+              </Text>
+            </>
+          ) : (
+            <>
+              {routeDistance && (
+                <Text style={styles.infoText}>
+                  Distance: {formatDistance(routeDistance)}
+                </Text>
               )}
-
-              {isCalculating && (
-              <View style={styles.calculatingOverlay}>
-                <Text style={styles.calculatingText}>Calculating Route...</Text>
-              </View>
+              {routeDuration && (
+                <Text style={styles.infoText}>
+                  Duration: {formatDuration(routeDuration)}
+                </Text>
               )}
+            </>
+          )}
+        </View>
+      )}
 
-              {(routeDistance || routeDuration || remainingDistance !== null) && (
-              <View style={styles.infoOverlay}>
-                {remainingDistance !== null ? (
-                <>
-                  <Text style={styles.infoText}>
-                  Distance: {formatDistance(remainingDistance)}
-                  </Text>
-                  <Text style={styles.infoText}>
-                  ETA: {eta ? formatETA(eta) : "--:--"}
-                  </Text>
-                </>
-                ) : (
-                <>
-                  {routeDistance && (
-                  <Text style={styles.infoText}>
-                    Distance: {formatDistance(routeDistance)}
-                  </Text>
-                  )}
-                  {routeDuration && (
-                  <Text style={styles.infoText}>
-                    Duration: {formatDuration(routeDuration)}
-                  </Text>
-                  )}
-                </>
-                )}
-              </View>
-              )}
+      {errorMsg && (
+        <View style={styles.errorOverlay}>
+          <Text style={styles.errorText}>{errorMsg}</Text>
+        </View>
+      )}
 
-              {errorMsg && (
-              <View style={styles.errorOverlay}>
-                <Text style={styles.errorText}>{errorMsg}</Text>
-              </View>
-              )}
-
-              {/* Save Route Modal */}
+      {/* Save Route Modal */}
       <Modal
         visible={showSaveModal}
         transparent={true}
@@ -744,7 +751,7 @@ export default function App() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Save Route</Text>
-            
+
             <TextInput
               style={styles.nameInput}
               value={routeName}
@@ -753,20 +760,20 @@ export default function App() {
               autoFocus
               returnKeyType="done"
             />
-            
+
             <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, { backgroundColor: '#ccc' }]}
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: "#ccc" }]}
                 onPress={() => {
                   setShowSaveModal(false);
-                  setRouteName(''); // Clear route name on cancel
+                  setRouteName(""); // Clear route name on cancel
                 }}
               >
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.modalButton, { backgroundColor: '#4CAF50' }]}
+
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: "#4CAF50" }]}
                 onPress={saveCurrentRoute}
                 accessibilityLabel="Save route"
               >
@@ -856,7 +863,12 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
   },
-  infoText: { color: "white", fontSize: 14, marginVertical: 2 },
+  infoText: {
+    color: "white",
+    fontSize: 14,
+    marginVertical: 2,
+    fontWeight: "800",
+  },
   // Navigation mode styles
   navigationOverlay: {
     position: "absolute",
@@ -975,6 +987,19 @@ const styles = StyleSheet.create({
     width: "48%",
     alignItems: "center",
   },
+  logoContainer: {
+    position: "absolute",
+    top: Platform.OS === "android" ? StatusBar.currentHeight + 10 : 50,
+    right: 10,
+    zIndex: 10,
+  },
+
+  logo: {
+    width: 80, // Adjust size as needed
+    height: 80,
+    resizeMode: "contain",
+  },
+
   saveModalButton: {
     backgroundColor: "#4CAF50",
   },
