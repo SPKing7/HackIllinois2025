@@ -11,61 +11,81 @@ const GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.googleMapsApiKey;
  *  - distance: total distance in meters
  *  - duration: total duration in seconds
  *
- * The drawn path is first resampled every ~8 meters,
- * then simplified using the Ramer–Douglas–Peucker algorithm.
+ * The algorithm now prioritizes maintaining the shape of the drawn path over 
+ * finding the shortest route.
  *
  * @param {Array} points - Array of lat/lng coordinates from the drawn path
  * @returns {Promise<Object>}
  */
 export const getPathFromPoints = async (points) => {
-  console.log("Api key is: " + GOOGLE_MAPS_API_KEY);
   if (points.length < 2) {
     throw new Error("At least 2 points are required");
   }
 
   try {
-    // Resample the path every ~8 meters
-    const resampled = resamplePath(points, 8);
-    // Simplify the resampled path with a slightly higher epsilon to remove minor deviations
-    const simplified = simplifyPath(resampled, 0.00015);
+    // First option: if few points were drawn, use them all directly
+    if (points.length <= 10) {
+      return await getShapePreservingPath(points);
+    }
+    
+    // Otherwise, divide and conquer approach for more complex paths
+    return await getSegmentedPath(points);
+  } catch (error) {
+    console.error("Error in getPathFromPoints:", error);
+    throw error;
+  }
+};
 
-    // Use the first and last points as origin and destination
+/**
+ * Gets a path that closely follows the shape of drawn points
+ * by using more waypoints and segment-by-segment direction requests.
+ */
+async function getShapePreservingPath(points) {
+  try {
+    // Less aggressive simplification to preserve more details
+    const simplified = simplifyPath(points, 0.00008); // Lower epsilon = more detail
+    
+    // Use start and end for origin/destination
     const origin = simplified[0];
     const destination = simplified[simplified.length - 1];
-    // Use the intermediate points as via-waypoints (reduce count to 4 for a more consistent route)
+    
+    // Use more waypoints (up to 10 for Google Directions API limits)
     const waypoints = simplified.slice(1, -1);
-    const sampledWaypoints = sampleWaypoints(waypoints, 4);
-    // Prefix each waypoint with "via:" to force the route to be continuous
+    const maxWaypoints = Math.min(waypoints.length, 8); // Google API limit is 10 (including start/end)
+    
+    // Sample waypoints more densely to maintain the shape
+    const sampledWaypoints = sampleWaypoints(waypoints, maxWaypoints);
+    
+    // Force each waypoint to be respected exactly (via:) to maintain the drawn shape
     const waypointsStr = sampledWaypoints
       .map((p) => `via:${p.latitude},${p.longitude}`)
       .join("|");
 
-    // Call the Google Directions API for walking directions
-    const response = await axios
-      .get("https://maps.googleapis.com/maps/api/directions/json", {
+    // Call Google Directions API with shape-preserving parameters
+    const response = await axios.get(
+      "https://maps.googleapis.com/maps/api/directions/json",
+      {
         params: {
           origin: `${origin.latitude},${origin.longitude}`,
           destination: `${destination.latitude},${destination.longitude}`,
           waypoints: waypointsStr,
           mode: "walking",
           key: GOOGLE_MAPS_API_KEY,
+          optimizeWaypoints: false, // Critical: do NOT optimize the waypoint order
+          alternatives: false // Don't provide alternative routes
         },
-      })
-      .catch((error) => {
-        console.error("Error in getPathFromPoints:", error);
-      });
+      }
+    );
 
     if (response.data.status !== "OK") {
       throw new Error("Directions API error: " + response.data.status);
     }
 
+    // Process the response to get polyline, distance, duration
     const route = response.data.routes[0];
-    // Decode the polyline (overview_polyline should be a single continuous route)
     let polyline = decodePolyline(route.overview_polyline.points);
-    // Smooth the final polyline for a cleaner, continuous appearance
-    polyline = createSmoothPath(polyline);
-
-    // Sum distance and duration from all legs
+    
+    // Calculate total distance and duration
     let totalDistance = 0;
     let totalDuration = 0;
     route.legs.forEach((leg) => {
@@ -73,12 +93,73 @@ export const getPathFromPoints = async (points) => {
       totalDuration += leg.duration.value;
     });
 
-    return { polyline, distance: totalDistance, duration: totalDuration };
+    return { 
+      polyline, 
+      distance: totalDistance, 
+      duration: totalDuration,
+      originalShape: points // Include original points for comparison if needed
+    };
   } catch (error) {
-    console.error("Error in getPathFromPoints:", error);
+    console.error("Error getting shape-preserving path:", error);
     throw error;
   }
-};
+}
+
+/**
+ * For complex paths, break into segments and get directions for each segment
+ * then combine the results.
+ */
+async function getSegmentedPath(points) {
+  // Simplify slightly to remove noise but keep shape
+  const simplified = simplifyPath(points, 0.00008);
+  
+  // Segment the path into chunks of 8-10 points each
+  const segments = [];
+  for (let i = 0; i < simplified.length - 1; i += 8) {
+    const end = Math.min(i + 9, simplified.length); // 9 points = 8 segments
+    const segment = simplified.slice(i, end);
+    if (segment.length >= 2) {
+      segments.push(segment);
+    }
+  }
+  
+  // Ensure the last point is included
+  if (segments.length > 1 && 
+      segments[segments.length - 1][segments[segments.length - 1].length - 1] !== simplified[simplified.length - 1]) {
+    segments[segments.length - 1].push(simplified[simplified.length - 1]);
+  }
+  
+  // Get directions for each segment
+  const results = [];
+  let totalDistance = 0;
+  let totalDuration = 0;
+  
+  for (const segment of segments) {
+    const result = await getShapePreservingPath(segment);
+    results.push(result);
+    totalDistance += result.distance;
+    totalDuration += result.duration;
+  }
+  
+  // Combine polylines from all segments
+  let combinedPolyline = [];
+  for (let i = 0; i < results.length; i++) {
+    if (i === 0) {
+      // Include all points from the first segment
+      combinedPolyline = [...results[i].polyline];
+    } else {
+      // Skip first point from subsequent segments (already included)
+      combinedPolyline = [...combinedPolyline, ...results[i].polyline.slice(1)];
+    }
+  }
+  
+  return {
+    polyline: combinedPolyline,
+    distance: totalDistance,
+    duration: totalDuration,
+    originalShape: points
+  };
+}
 
 /**
  * Resamples the input path so that there is a point approximately every "interval" meters.
@@ -192,16 +273,20 @@ function perpendicularDistance(point, lineStart, lineEnd) {
 
 /**
  * Samples waypoints to stay within API limits.
+ * Modified to distribute waypoints more evenly to maintain shape.
  */
 function sampleWaypoints(waypoints, maxCount) {
   if (waypoints.length <= maxCount) return waypoints;
 
+  // Distribute waypoints evenly throughout the path
   const result = [];
   const step = waypoints.length / maxCount;
+  
   for (let i = 0; i < maxCount; i++) {
     const index = Math.min(Math.floor(i * step), waypoints.length - 1);
     result.push(waypoints[index]);
   }
+  
   return result;
 }
 
@@ -216,7 +301,7 @@ function createSmoothPath(points) {
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1];
     const curr = points[i];
-    const steps = 10; // More steps for a smoother curve
+    const steps = 25; // More steps for a smoother curve
     for (let j = 1; j <= steps; j++) {
       const ratio = j / (steps + 1);
       result.push({
