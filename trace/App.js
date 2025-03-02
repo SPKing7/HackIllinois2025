@@ -10,11 +10,16 @@ import {
   SafeAreaView,
   Platform,
   StatusBar,
+  Alert,
+  TextInput,
+  Modal,
 } from "react-native";
 import MapView, { Polyline, Marker } from "react-native-maps";
 import * as Location from "expo-location";
 import { getPathFromPoints } from "./pathFinder";
 import { MaterialIcons } from '@expo/vector-icons';
+import RouteHistoryScreen from './screens/RouteHistoryScreen';
+import { saveRoute } from './utils/routeStorage';
 
 const { width, height } = Dimensions.get("window");
 
@@ -35,6 +40,9 @@ export default function App() {
   const [eta, setEta] = useState(null);
   const [navigationSteps, setNavigationSteps] = useState([]);
   const [userLocationSubscription, setUserLocationSubscription] = useState(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [routeName, setRouteName] = useState('');
+  const [showHistoryScreen, setShowHistoryScreen] = useState(false);
   const mapRef = useRef(null);
 
   // Request location permission and get current location
@@ -388,6 +396,71 @@ export default function App() {
     return `${hours}:${minutes < 10 ? '0' : ''}${minutes}`;
   };
 
+  // Function to handle saving the current route
+  const handleSaveRoute = async () => {
+    if (calculatedPath.length === 0) {
+      Alert.alert('Error', 'No route to save');
+      return;
+    }
+    
+    setShowSaveModal(true);
+    setRouteName(`Route ${new Date().toLocaleDateString()}`);
+  };
+
+  // Function to save route with entered name
+  const saveCurrentRoute = async () => {
+    if (!routeName.trim()) {
+      Alert.alert('Error', 'Please enter a route name');
+      return;
+    }
+    
+    try {
+      await saveRoute({
+        name: routeName,
+        drawnPath,
+        calculatedPath,
+        distance: routeDistance,
+        duration: routeDuration,
+      });
+      
+      setShowSaveModal(false);
+      Alert.alert('Success', 'Route saved successfully');
+    } catch (error) {
+      console.error('Error saving route:', error);
+      Alert.alert('Error', 'Failed to save route');
+    }
+  };
+
+  // Function to load a saved route
+  const loadSavedRoute = (route) => {
+    setDrawnPath(route.drawnPath || []);
+    setCalculatedPath(route.calculatedPath || []);
+    setRouteDistance(route.distance);
+    setRouteDuration(route.duration);
+    
+    // Fit map to the loaded route
+    if (mapRef.current && route.calculatedPath?.length > 0) {
+      setTimeout(() => {
+        mapRef.current.fitToCoordinates(route.calculatedPath, {
+          edgePadding: { top: 50, right: 50, bottom: 150, left: 50 },
+          animated: true,
+        });
+      }, 500);
+    }
+  };
+
+  // If showing history screen, render that instead of main app
+  if (showHistoryScreen) {
+    return (
+      <RouteHistoryScreen 
+        navigation={{ 
+          goBack: () => setShowHistoryScreen(false) 
+        }}
+        onSelectRoute={loadSavedRoute}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle={isNavigating ? "light-content" : "dark-content"} />
@@ -507,20 +580,39 @@ export default function App() {
           {/* Drawing/finish buttons */}
           {!isDrawing ? (
             calculatedPath.length === 0 ? (
-              <TouchableOpacity
-                style={[styles.button, styles.drawButton]}
-                onPress={handleStartDrawing}
-              >
-                <Text style={styles.buttonText}>Draw Route</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={[styles.button, styles.drawButton]}
+                  onPress={handleStartDrawing}
+                >
+                  <Text style={styles.buttonText}>Draw Route</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.button, { backgroundColor: "#9C27B0" }]}
+                  onPress={() => setShowHistoryScreen(true)}
+                >
+                  <Text style={styles.buttonText}>View History</Text>
+                </TouchableOpacity>
+              </>
             ) : (
-              // Show navigation button when there's a route
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: "#147EFB" }]}
-                onPress={startNavigation}
-              >
-                <Text style={styles.buttonText}>Start Navigation</Text>
-              </TouchableOpacity>
+              <>
+                {/* Navigation button when there's a route */}
+                <TouchableOpacity
+                  style={[styles.button, { backgroundColor: "#147EFB" }]}
+                  onPress={startNavigation}
+                >
+                  <Text style={styles.buttonText}>Start Navigation</Text>
+                </TouchableOpacity>
+                
+                {/* Save route button */}
+                <TouchableOpacity
+                  style={[styles.button, { backgroundColor: "#4CAF50" }]}
+                  onPress={handleSaveRoute}
+                >
+                  <Text style={styles.buttonText}>Save Route</Text>
+                </TouchableOpacity>
+              </>
             )
           ) : (
             <TouchableOpacity
@@ -555,6 +647,15 @@ export default function App() {
               <Text style={styles.buttonText}>Clear All</Text>
             </TouchableOpacity>
           )}
+          
+          {calculatedPath.length > 0 && (
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: "#9C27B0" }]}
+              onPress={() => setShowHistoryScreen(true)}
+            >
+              <Text style={styles.buttonText}>View History</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -584,6 +685,44 @@ export default function App() {
           <Text style={styles.errorText}>{errorMsg}</Text>
         </View>
       )}
+
+      {/* Save Route Modal */}
+      <Modal
+        visible={showSaveModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowSaveModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Save Route</Text>
+            
+            <TextInput
+              style={styles.nameInput}
+              value={routeName}
+              onChangeText={setRouteName}
+              placeholder="Enter a name for this route"
+              autoFocus
+            />
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setShowSaveModal(false)}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={[styles.modalButton, styles.saveModalButton]}
+                onPress={saveCurrentRoute}
+              >
+                <Text style={styles.modalButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -742,5 +881,59 @@ const styles = StyleSheet.create({
     padding: 6,
     borderWidth: 2,
     borderColor: 'white',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '80%',
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+  },
+  nameInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 10,
+    width: '100%',
+    marginBottom: 20,
+    fontSize: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  modalButton: {
+    padding: 12,
+    borderRadius: 8,
+    width: '48%',
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#ccc',
+  },
+  saveModalButton: {
+    backgroundColor: '#4CAF50',
+  },
+  modalButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });
