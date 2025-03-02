@@ -10,9 +10,7 @@ const GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.googleMapsApiKey;
  *  - polyline: array of lat/lng coordinates for the walkable route
  *  - distance: total distance in meters
  *  - duration: total duration in seconds
- *
- * The algorithm now prioritizes maintaining the shape of the drawn path over 
- * finding the shortest route.
+ *  - directions: array of turn-by-turn direction instructions
  *
  * @param {Array} points - Array of lat/lng coordinates from the drawn path
  * @returns {Promise<Object>}
@@ -27,11 +25,77 @@ export const getPathFromPoints = async (points) => {
     if (points.length <= 10) {
       return await getShapePreservingPath(points);
     }
-    
+
     // Otherwise, divide and conquer approach for more complex paths
     return await getSegmentedPath(points);
   } catch (error) {
     console.error("Error in getPathFromPoints:", error);
+    throw error;
+  }
+};
+
+/**
+ * Gets directions from current location to the start point of a route.
+ * Returns an object containing polyline, distance, duration, and turn-by-turn directions.
+ *
+ * @param {Object} currentLocation - Current user location {latitude, longitude}
+ * @param {Object} startPoint - Starting point of the route {latitude, longitude}
+ * @returns {Promise<Object>}
+ */
+export const getDirectionsToStart = async (currentLocation, startPoint) => {
+  try {
+    const response = await axios.get(
+      "https://maps.googleapis.com/maps/api/directions/json",
+      {
+        params: {
+          origin: `${currentLocation.latitude},${currentLocation.longitude}`,
+          destination: `${startPoint.latitude},${startPoint.longitude}`,
+          mode: "walking",
+          key: GOOGLE_MAPS_API_KEY,
+        },
+      }
+    );
+
+    if (response.data.status !== "OK") {
+      throw new Error("Directions API error: " + response.data.status);
+    }
+
+    // Process the response
+    const route = response.data.routes[0];
+    const polyline = decodePolyline(route.overview_polyline.points);
+
+    // Calculate total distance and duration
+    let totalDistance = 0;
+    let totalDuration = 0;
+
+    // Extract turn-by-turn directions
+    let directions = [];
+
+    route.legs.forEach((leg) => {
+      totalDistance += leg.distance.value;
+      totalDuration += leg.duration.value;
+
+      // Process steps into directions
+      leg.steps.forEach((step) => {
+        directions.push({
+          instruction: step.html_instructions.replace(/<[^>]*>/g, " ").trim(),
+          distance: step.distance,
+          duration: step.duration,
+          start_location: step.start_location,
+          end_location: step.end_location,
+          maneuver: step.maneuver || "straight",
+        });
+      });
+    });
+
+    return {
+      polyline,
+      distance: totalDistance,
+      duration: totalDuration,
+      directions,
+    };
+  } catch (error) {
+    console.error("Error getting directions to start:", error);
     throw error;
   }
 };
@@ -44,18 +108,18 @@ async function getShapePreservingPath(points) {
   try {
     // Less aggressive simplification to preserve more details
     const simplified = simplifyPath(points, 0.00008); // Lower epsilon = more detail
-    
+
     // Use start and end for origin/destination
     const origin = simplified[0];
     const destination = simplified[simplified.length - 1];
-    
+
     // Use more waypoints (up to 10 for Google Directions API limits)
     const waypoints = simplified.slice(1, -1);
     const maxWaypoints = Math.min(waypoints.length, 8); // Google API limit is 10 (including start/end)
-    
+
     // Sample waypoints more densely to maintain the shape
     const sampledWaypoints = sampleWaypoints(waypoints, maxWaypoints);
-    
+
     // Force each waypoint to be respected exactly (via:) to maintain the drawn shape
     const waypointsStr = sampledWaypoints
       .map((p) => `via:${p.latitude},${p.longitude}`)
@@ -71,8 +135,8 @@ async function getShapePreservingPath(points) {
           waypoints: waypointsStr,
           mode: "walking",
           key: GOOGLE_MAPS_API_KEY,
-          optimizeWaypoints: false, // Critical: do NOT optimize the waypoint order
-          alternatives: false // Don't provide alternative routes
+          optimizeWaypoints: false, // do NOT optimize the waypoint order
+          alternatives: false, // Don't provide alternative routes
         },
       }
     );
@@ -84,256 +148,104 @@ async function getShapePreservingPath(points) {
     // Process the response to get polyline, distance, duration
     const route = response.data.routes[0];
     let polyline = decodePolyline(route.overview_polyline.points);
-    
+
     // Calculate total distance and duration
     let totalDistance = 0;
     let totalDuration = 0;
+
+    // Extract turn-by-turn directions
+    let directions = [];
+
     route.legs.forEach((leg) => {
       totalDistance += leg.distance.value;
       totalDuration += leg.duration.value;
+
+      // Process steps into directions
+      leg.steps.forEach((step) => {
+        directions.push({
+          instruction: step.html_instructions.replace(/<[^>]*>/g, " ").trim(),
+          distance: step.distance,
+          duration: step.duration,
+          start_location: step.start_location,
+          end_location: step.end_location,
+          maneuver: step.maneuver || "straight",
+        });
+      });
     });
 
-    return { 
-      polyline, 
-      distance: totalDistance, 
+    return {
+      polyline,
+      distance: totalDistance,
       duration: totalDuration,
-      originalShape: points // Include original points for comparison if needed
+      directions,
+      originalShape: points, // Include original
     };
   } catch (error) {
-    console.error("Error getting shape-preserving path:", error);
+    console.error("Error in getShapePreservingPath:", error);
     throw error;
   }
 }
 
 /**
- * For complex paths, break into segments and get directions for each segment
- * then combine the results.
+ * Gets a path by splitting the points into segments and merging the results.
+ * This approach is useful for more complex or longer paths.
  */
 async function getSegmentedPath(points) {
-  // Simplify slightly to remove noise but keep shape
-  const simplified = simplifyPath(points, 0.00008);
-  
-  // Segment the path into chunks of 8-10 points each
-  const segments = [];
-  for (let i = 0; i < simplified.length - 1; i += 8) {
-    const end = Math.min(i + 9, simplified.length); // 9 points = 8 segments
-    const segment = simplified.slice(i, end);
-    if (segment.length >= 2) {
-      segments.push(segment);
-    }
-  }
-  
-  // Ensure the last point is included
-  if (segments.length > 1 && 
-      segments[segments.length - 1][segments[segments.length - 1].length - 1] !== simplified[simplified.length - 1]) {
-    segments[segments.length - 1].push(simplified[simplified.length - 1]);
-  }
-  
-  // Get directions for each segment
-  const results = [];
+  // Define maximum points per segment
+  const MAX_POINTS_PER_SEGMENT = 10;
+  let fullPath = [];
   let totalDistance = 0;
   let totalDuration = 0;
-  
-  for (const segment of segments) {
-    const result = await getShapePreservingPath(segment);
-    results.push(result);
-    totalDistance += result.distance;
-    totalDuration += result.duration;
-  }
-  
-  // Combine polylines from all segments
-  let combinedPolyline = [];
-  for (let i = 0; i < results.length; i++) {
-    if (i === 0) {
-      // Include all points from the first segment
-      combinedPolyline = [...results[i].polyline];
+  let allDirections = [];
+
+  for (let i = 0; i < points.length - 1; i += MAX_POINTS_PER_SEGMENT - 1) {
+    // Get segment points, ensuring overlapping between segments
+    const segmentPoints = points.slice(i, i + MAX_POINTS_PER_SEGMENT);
+    if (segmentPoints.length < 2) break;
+    const segmentResult = await getShapePreservingPath(segmentPoints);
+    // Merge paths, avoid duplicate point at segment boundaries
+    if (fullPath.length > 0) {
+      fullPath = fullPath.concat(segmentResult.polyline.slice(1));
     } else {
-      // Skip first point from subsequent segments (already included)
-      combinedPolyline = [...combinedPolyline, ...results[i].polyline.slice(1)];
+      fullPath = segmentResult.polyline;
     }
+    totalDistance += segmentResult.distance;
+    totalDuration += segmentResult.duration;
+    allDirections = allDirections.concat(segmentResult.directions);
   }
-  
+
   return {
-    polyline: combinedPolyline,
+    polyline: fullPath,
     distance: totalDistance,
     duration: totalDuration,
-    originalShape: points
+    directions: allDirections,
+    originalShape: points,
   };
 }
 
 /**
- * Resamples the input path so that there is a point approximately every "interval" meters.
- * Ensures the first and last points are preserved.
- */
-function resamplePath(points, interval) {
-  if (points.length < 2) return points;
-
-  const newPath = [points[0]];
-  let accumulated = 0;
-
-  for (let i = 1; i < points.length; i++) {
-    let prev = points[i - 1];
-    let curr = points[i];
-    let segmentDistance = getDistanceMeters(prev, curr);
-
-    while (accumulated + segmentDistance >= interval) {
-      let remaining = interval - accumulated;
-      let t = remaining / segmentDistance;
-      const newLat = prev.latitude + (curr.latitude - prev.latitude) * t;
-      const newLng = prev.longitude + (curr.longitude - prev.longitude) * t;
-      const newPoint = { latitude: newLat, longitude: newLng };
-      newPath.push(newPoint);
-      // Prepare for the next interval in the same segment:
-      segmentDistance -= remaining;
-      prev = newPoint;
-      accumulated = 0;
-    }
-    accumulated += segmentDistance;
-  }
-
-  // Ensure the last drawn point is included
-  const lastPoint = points[points.length - 1];
-  const finalPoint = newPath[newPath.length - 1];
-  if (
-    finalPoint.latitude !== lastPoint.latitude ||
-    finalPoint.longitude !== lastPoint.longitude
-  ) {
-    newPath.push(lastPoint);
-  }
-
-  return newPath;
-}
-
-/**
- * Returns the distance between two lat/lng points in meters using the haversine formula.
- */
-function getDistanceMeters(p1, p2) {
-  const R = 6371000; // Earth's radius in meters
-  const dLat = toRad(p2.latitude - p1.latitude);
-  const dLon = toRad(p2.longitude - p1.longitude);
-  const lat1 = toRad(p1.latitude);
-  const lat2 = toRad(p2.latitude);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
-
-function toRad(deg) {
-  return (deg * Math.PI) / 180;
-}
-
-/**
- * Simplifies a path using the Ramer–Douglas–Peucker algorithm.
- */
-function simplifyPath(points, epsilon) {
-  if (points.length <= 2) return points;
-
-  let maxDistance = 0;
-  let index = 0;
-  const start = points[0];
-  const end = points[points.length - 1];
-
-  for (let i = 1; i < points.length - 1; i++) {
-    const distance = perpendicularDistance(points[i], start, end);
-    if (distance > maxDistance) {
-      maxDistance = distance;
-      index = i;
-    }
-  }
-
-  if (maxDistance > epsilon) {
-    const firstPart = simplifyPath(points.slice(0, index + 1), epsilon);
-    const secondPart = simplifyPath(points.slice(index), epsilon);
-    return [...firstPart.slice(0, -1), ...secondPart];
-  } else {
-    return [points[0], points[points.length - 1]];
-  }
-}
-
-/**
- * Calculates the perpendicular distance from a point to a line.
- */
-function perpendicularDistance(point, lineStart, lineEnd) {
-  const lat1 = lineStart.latitude,
-    lon1 = lineStart.longitude;
-  const lat2 = lineEnd.latitude,
-    lon2 = lineEnd.longitude;
-  const lat0 = point.latitude,
-    lon0 = point.longitude;
-
-  const dx = lat2 - lat1;
-  const dy = lon2 - lon1;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  if (length === 0) return Math.sqrt((lat0 - lat1) ** 2 + (lon0 - lon1) ** 2);
-
-  return Math.abs((dy * lat0 - dx * lon0 + lat2 * lon1 - lon2 * lat1) / length);
-}
-
-/**
- * Samples waypoints to stay within API limits.
- * Modified to distribute waypoints more evenly to maintain shape.
- */
-function sampleWaypoints(waypoints, maxCount) {
-  if (waypoints.length <= maxCount) return waypoints;
-
-  // Distribute waypoints evenly throughout the path
-  const result = [];
-  const step = waypoints.length / maxCount;
-  
-  for (let i = 0; i < maxCount; i++) {
-    const index = Math.min(Math.floor(i * step), waypoints.length - 1);
-    result.push(waypoints[index]);
-  }
-  
-  return result;
-}
-
-/**
- * Creates a smooth path by interpolating between points.
- * Increased steps (10) produce a smoother “canvas” effect.
- */
-function createSmoothPath(points) {
-  if (points.length <= 2) return points;
-
-  const result = [points[0]];
-  for (let i = 1; i < points.length; i++) {
-    const prev = points[i - 1];
-    const curr = points[i];
-    const steps = 25; // More steps for a smoother curve
-    for (let j = 1; j <= steps; j++) {
-      const ratio = j / (steps + 1);
-      result.push({
-        latitude: prev.latitude + (curr.latitude - prev.latitude) * ratio,
-        longitude: prev.longitude + (curr.longitude - prev.longitude) * ratio,
-      });
-    }
-    result.push(curr);
-  }
-  return result;
-}
-
-/**
- * Decodes a Google-encoded polyline into an array of lat/lng points.
+ * Decodes a Google Maps encoded polyline string into an array of coordinates.
+ * @param {string} encoded - The encoded polyline string.
+ * @returns {Array<{latitude: number, longitude: number}>} - Array of coordinate objects.
  */
 function decodePolyline(encoded) {
-  const points = [];
+  let points = [];
   let index = 0,
-    lat = 0,
+    len = encoded.length;
+  let lat = 0,
     lng = 0;
 
-  while (index < encoded.length) {
-    let shift = 0,
-      result = 0,
-      b;
+  while (index < len) {
+    let b,
+      shift = 0,
+      result = 0;
     do {
       b = encoded.charCodeAt(index++) - 63;
       result |= (b & 0x1f) << shift;
       shift += 5;
     } while (b >= 0x20);
-    const deltaLat = result & 1 ? ~(result >> 1) : result >> 1;
-    lat += deltaLat;
+    let dlat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += dlat;
 
     shift = 0;
     result = 0;
@@ -342,13 +254,87 @@ function decodePolyline(encoded) {
       result |= (b & 0x1f) << shift;
       shift += 5;
     } while (b >= 0x20);
-    const deltaLng = result & 1 ? ~(result >> 1) : result >> 1;
-    lng += deltaLng;
+    let dlng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += dlng;
 
-    points.push({
-      latitude: lat / 1e5,
-      longitude: lng / 1e5,
-    });
+    points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
   }
   return points;
+}
+
+/**
+ * Simplifies a path using the Ramer-Douglas-Peucker algorithm.
+ * @param {Array} points - Array of {latitude, longitude} objects.
+ * @param {number} epsilon - Tolerance value.
+ * @returns {Array} - Simplified path.
+ */
+function simplifyPath(points, epsilon) {
+  // If the path is too short, return it as is.
+  if (points.length < 3) return points;
+
+  const sqEpsilon = epsilon * epsilon;
+
+  // Find the point with the maximum distance
+  let maxDist = 0;
+  let index = 0;
+  const end = points.length - 1;
+  for (let i = 1; i < end; i++) {
+    const dist = perpendicularDistance(points[i], points[0], points[end]);
+    if (dist > maxDist) {
+      index = i;
+      maxDist = dist;
+    }
+  }
+
+  // If max distance is greater than epsilon, recursively simplify
+  if (maxDist > sqEpsilon) {
+    const recResults1 = simplifyPath(points.slice(0, index + 1), epsilon);
+    const recResults2 = simplifyPath(points.slice(index), epsilon);
+    // Combine results, avoid duplicate point at the junction
+    return recResults1.slice(0, -1).concat(recResults2);
+  } else {
+    return [points[0], points[end]];
+  }
+}
+
+/**
+ * Helper function to calculate the squared perpendicular distance
+ * from a point to a line segment (start to end).
+ */
+function perpendicularDistance(point, start, end) {
+  const dx = end.latitude - start.latitude;
+  const dy = end.longitude - start.longitude;
+
+  if (dx === 0 && dy === 0) {
+    return (
+      Math.pow(point.latitude - start.latitude, 2) +
+      Math.pow(point.longitude - start.longitude, 2)
+    );
+  }
+
+  const t =
+    ((point.latitude - start.latitude) * dx +
+      (point.longitude - start.longitude) * dy) /
+    (dx * dx + dy * dy);
+  const projLat = start.latitude + t * dx;
+  const projLng = start.longitude + t * dy;
+  const dLat = point.latitude - projLat;
+  const dLng = point.longitude - projLng;
+  return dLat * dLat + dLng * dLng;
+}
+
+/**
+ * Samples waypoints from an array to a desired count.
+ * @param {Array} waypoints - Array of waypoint objects.
+ * @param {number} count - Desired number of waypoints.
+ * @returns {Array} - Sampled waypoints.
+ */
+function sampleWaypoints(waypoints, count) {
+  if (waypoints.length <= count) return waypoints;
+  const sampled = [];
+  const step = (waypoints.length - 1) / (count - 1);
+  for (let i = 0; i < count; i++) {
+    sampled.push(waypoints[Math.round(i * step)]);
+  }
+  return sampled;
 }
