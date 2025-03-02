@@ -1,59 +1,70 @@
+// pathFinder.js
 import axios from "axios";
 
-// This API key would need to be replaced with a valid one
-// and should be stored securely in a real app
+// Replace with your actual API key (store it securely in production)
 const GOOGLE_MAPS_API_KEY = "AIzaSyCOoH6FrJx05wpCXIr0yzGABy3LdEG7T80";
 
 /**
- * Gets a walkable path from a series of drawn points using Google Directions API
- * @param {Array} points - Array of lat/lng coordinates from drawn path
- * @returns {Promise<Array>} - Array of lat/lng coordinates for walkable path
+ * Gets a walkable path from a series of drawn points using the Google Directions API.
+ * Returns an object containing:
+ *  - polyline: array of lat/lng coordinates for the walkable route
+ *  - distance: total distance in meters
+ *  - duration: total duration in seconds
+ *
+ * The drawn path is first simplified using the Ramer–Douglas–Peucker algorithm.
+ *
+ * @param {Array} points - Array of lat/lng coordinates from the drawn path
+ * @returns {Promise<Object>}
  */
 export const getPathFromPoints = async (points) => {
   if (points.length < 2) {
     throw new Error("At least 2 points are required");
   }
 
-  // For a real implementation, we would use the actual Google Directions API
-  // However, for demo purposes, we'll approximate the route
-
-  // In a real app, you would:
-  // 1. Simplify the drawn path to reduce the number of waypoints
-  // 2. Extract key waypoints (like corners, start, end)
-  // 3. Call the Google Directions API with these waypoints
-
   try {
-    // Demo implementation: Sample how a real implementation might work
-    const simplified = simplifyPath(points, 0.0001); // Simplify to reduce API calls
+    // Simplify the path to reduce waypoints using Ramer–Douglas–Peucker
+    const simplified = simplifyPath(points, 0.0001);
 
-    // Extract origin, destination and waypoints
+    // Extract origin, destination, and sample waypoints (up to 8)
     const origin = simplified[0];
     const destination = simplified[simplified.length - 1];
-
-    // Get up to 8 waypoints (Google Directions API limit for free tier)
     const waypoints = simplified.slice(1, -1);
     const sampledWaypoints = sampleWaypoints(waypoints, 8);
 
-    // Example of how you would call the Google Directions API
-    // In a real app, we'd use the result from this API call
-    /* 
-    const response = await axios.get('https://maps.googleapis.com/maps/api/directions/json', {
-      params: {
-        origin: `${origin.latitude},${origin.longitude}`,
-        destination: `${destination.latitude},${destination.longitude}`,
-        waypoints: sampledWaypoints.map(p => `${p.latitude},${p.longitude}`).join('|'),
-        mode: 'walking',
-        key: GOOGLE_MAPS_API_KEY
-      }
-    });
-    
-    // Process the directions response to extract the path
-    // (This would parse the route and extract the polyline points)
-    return decodePolyline(response.data.routes[0].overview_polyline.points);
-    */
+    const waypointsStr = sampledWaypoints
+      .map((p) => `${p.latitude},${p.longitude}`)
+      .join("|");
 
-    // For this demo, we'll just create a smoother path based on the input
-    return createSmoothPath(simplified);
+    // Call the Google Directions API for walking directions
+    const response = await axios.get(
+      "https://maps.googleapis.com/maps/api/directions/json",
+      {
+        params: {
+          origin: `${origin.latitude},${origin.longitude}`,
+          destination: `${destination.latitude},${destination.longitude}`,
+          waypoints: waypointsStr,
+          mode: "walking",
+          key: GOOGLE_MAPS_API_KEY,
+        },
+      }
+    );
+
+    if (response.data.status !== "OK") {
+      throw new Error("Directions API error: " + response.data.status);
+    }
+
+    const route = response.data.routes[0];
+    const polyline = decodePolyline(route.overview_polyline.points);
+
+    // Sum distance and duration from all legs
+    let totalDistance = 0;
+    let totalDuration = 0;
+    route.legs.forEach((leg) => {
+      totalDistance += leg.distance.value;
+      totalDuration += leg.duration.value;
+    });
+
+    return { polyline, distance: totalDistance, duration: totalDuration };
   } catch (error) {
     console.error("Error in getPathFromPoints:", error);
     throw error;
@@ -61,14 +72,11 @@ export const getPathFromPoints = async (points) => {
 };
 
 /**
- * Simplifies a path using the Ramer-Douglas-Peucker algorithm
+ * Simplifies a path using the Ramer–Douglas–Peucker algorithm.
  */
 function simplifyPath(points, epsilon) {
-  if (points.length <= 2) {
-    return points;
-  }
+  if (points.length <= 2) return points;
 
-  // Find the point with the maximum distance
   let maxDistance = 0;
   let index = 0;
   const start = points[0];
@@ -82,7 +90,6 @@ function simplifyPath(points, epsilon) {
     }
   }
 
-  // If max distance is greater than epsilon, recursively simplify
   if (maxDistance > epsilon) {
     const firstPart = simplifyPath(points.slice(0, index + 1), epsilon);
     const secondPart = simplifyPath(points.slice(index), epsilon);
@@ -93,72 +100,54 @@ function simplifyPath(points, epsilon) {
 }
 
 /**
- * Calculate perpendicular distance from a point to a line
+ * Calculates the perpendicular distance from a point to a line.
  */
 function perpendicularDistance(point, lineStart, lineEnd) {
-  const lat1 = lineStart.latitude;
-  const lon1 = lineStart.longitude;
-  const lat2 = lineEnd.latitude;
-  const lon2 = lineEnd.longitude;
-  const lat0 = point.latitude;
-  const lon0 = point.longitude;
+  const lat1 = lineStart.latitude,
+    lon1 = lineStart.longitude;
+  const lat2 = lineEnd.latitude,
+    lon2 = lineEnd.longitude;
+  const lat0 = point.latitude,
+    lon0 = point.longitude;
 
-  // Simple 2D distance calculation
   const dx = lat2 - lat1;
   const dy = lon2 - lon1;
-
-  // Find the length of the line
   const length = Math.sqrt(dx * dx + dy * dy);
+  if (length === 0) return Math.sqrt((lat0 - lat1) ** 2 + (lon0 - lon1) ** 2);
 
-  if (length === 0) {
-    // Line is actually a point, return distance to that point
-    return Math.sqrt(Math.pow(lat0 - lat1, 2) + Math.pow(lon0 - lon1, 2));
-  }
-
-  // Calculate perpendicular distance
   const dist = Math.abs(
     (dy * lat0 - dx * lon0 + lat2 * lon1 - lon2 * lat1) / length
   );
-
   return dist;
 }
 
 /**
- * Sample waypoints to stay within API limits
+ * Samples waypoints to stay within API limits.
  */
 function sampleWaypoints(waypoints, maxCount) {
-  if (waypoints.length <= maxCount) {
-    return waypoints;
-  }
+  if (waypoints.length <= maxCount) return waypoints;
 
   const result = [];
   const step = waypoints.length / maxCount;
-
   for (let i = 0; i < maxCount; i++) {
     const index = Math.min(Math.floor(i * step), waypoints.length - 1);
     result.push(waypoints[index]);
   }
-
   return result;
 }
 
 /**
- * Create a smooth path by interpolating between points
- * This is just for demo purposes in the absence of the Google Directions API
+ * Creates a smooth path by interpolating between points.
+ * Increased steps (10) produce a smoother “canvas” effect.
  */
 function createSmoothPath(points) {
-  if (points.length <= 2) {
-    return points;
-  }
+  if (points.length <= 2) return points;
 
   const result = [points[0]];
-
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1];
     const curr = points[i];
-
-    // Add some interpolated points
-    const steps = 5; // Number of points to add between existing points
+    const steps = 10; // More steps for a smoother curve
     for (let j = 1; j <= steps; j++) {
       const ratio = j / (steps + 1);
       result.push({
@@ -166,55 +155,46 @@ function createSmoothPath(points) {
         longitude: prev.longitude + (curr.longitude - prev.longitude) * ratio,
       });
     }
-
     result.push(curr);
   }
-
   return result;
 }
 
 /**
- * Decodes a Google encoded polyline into an array of lat/lng points
- * (This would be used in a real implementation with the Google Directions API)
+ * Decodes a Google-encoded polyline into an array of lat/lng points.
  */
 function decodePolyline(encoded) {
   const points = [];
-  let index = 0;
-  const len = encoded.length;
-  let lat = 0;
-  let lng = 0;
+  let index = 0,
+    lat = 0,
+    lng = 0;
 
-  while (index < len) {
-    let b;
-    let shift = 0;
-    let result = 0;
-
+  while (index < encoded.length) {
+    let shift = 0,
+      result = 0,
+      b;
     do {
       b = encoded.charCodeAt(index++) - 63;
       result |= (b & 0x1f) << shift;
       shift += 5;
     } while (b >= 0x20);
-
-    const dlat = result & 1 ? ~(result >> 1) : result >> 1;
-    lat += dlat;
+    const deltaLat = result & 1 ? ~(result >> 1) : result >> 1;
+    lat += deltaLat;
 
     shift = 0;
     result = 0;
-
     do {
       b = encoded.charCodeAt(index++) - 63;
       result |= (b & 0x1f) << shift;
       shift += 5;
     } while (b >= 0x20);
-
-    const dlng = result & 1 ? ~(result >> 1) : result >> 1;
-    lng += dlng;
+    const deltaLng = result & 1 ? ~(result >> 1) : result >> 1;
+    lng += deltaLng;
 
     points.push({
       latitude: lat / 1e5,
       longitude: lng / 1e5,
     });
   }
-
   return points;
 }

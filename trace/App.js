@@ -7,8 +7,7 @@ import {
   Text,
   Dimensions,
 } from "react-native";
-import MapView from "react-native-maps";
-import { Polyline, Marker } from "react-native-maps";
+import MapView, { Polyline, Marker } from "react-native-maps";
 import * as Location from "expo-location";
 import { getPathFromPoints } from "./pathFinder";
 
@@ -21,8 +20,11 @@ export default function App() {
   const [drawnPath, setDrawnPath] = useState([]);
   const [calculatedPath, setCalculatedPath] = useState([]);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [routeDistance, setRouteDistance] = useState(null);
+  const [routeDuration, setRouteDuration] = useState(null);
   const mapRef = useRef(null);
 
+  // Request location permission and get current location
   useEffect(() => {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -30,16 +32,32 @@ export default function App() {
         setErrorMsg("Permission to access location was denied");
         return;
       }
-
-      let location = await Location.getCurrentPositionAsync({});
-      setLocation(location);
+      let currentLocation = await Location.getCurrentPositionAsync({});
+      setLocation(currentLocation);
     })();
   }, []);
+
+  // Animate to current location ONLY when not drawing
+  useEffect(() => {
+    if (location && mapRef.current && !isDrawing) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0.0922,
+          longitudeDelta: 0.0421,
+        },
+        1000 // 1-second animation
+      );
+    }
+  }, [location, isDrawing]);
 
   const handleStartDrawing = () => {
     setIsDrawing(true);
     setDrawnPath([]);
     setCalculatedPath([]);
+    setRouteDistance(null);
+    setRouteDuration(null);
   };
 
   const handleStopDrawing = () => {
@@ -52,23 +70,25 @@ export default function App() {
   const handleMapPress = (event) => {
     if (isDrawing) {
       const { coordinate } = event.nativeEvent;
-      setDrawnPath((prevPath) => [...prevPath, coordinate]);
+      setDrawnPath((prev) => [...prev, coordinate]);
     }
   };
 
   const handleMapDrag = (event) => {
     if (isDrawing) {
       const { coordinate } = event.nativeEvent;
-      setDrawnPath((prevPath) => [...prevPath, coordinate]);
+      setDrawnPath((prev) => [...prev, coordinate]);
     }
   };
 
   const calculatePath = async () => {
     setIsCalculating(true);
     try {
-      // This would be replaced with a real API call in a production app
-      const walkablePath = await getPathFromPoints(drawnPath);
-      setCalculatedPath(walkablePath);
+      // Call our directions function which uses the Google Directions API
+      const result = await getPathFromPoints(drawnPath);
+      setCalculatedPath(result.polyline);
+      setRouteDistance(result.distance);
+      setRouteDuration(result.duration);
     } catch (error) {
       console.error("Error calculating path:", error);
       setErrorMsg("Failed to calculate a walkable path");
@@ -80,6 +100,8 @@ export default function App() {
   const clearAll = () => {
     setDrawnPath([]);
     setCalculatedPath([]);
+    setRouteDistance(null);
+    setRouteDuration(null);
   };
 
   const initialRegion = location
@@ -96,6 +118,18 @@ export default function App() {
         longitudeDelta: 0.0421,
       };
 
+  // Helpers to format distance and duration
+  const formatDistance = (meters) => {
+    if (meters < 1000) return `${meters} m`;
+    return `${(meters / 1000).toFixed(2)} km`;
+  };
+
+  const formatDuration = (seconds) => {
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes} min ${secs} sec`;
+  };
+
   return (
     <View style={styles.container}>
       <MapView
@@ -105,6 +139,8 @@ export default function App() {
         showsUserLocation={true}
         onPanDrag={handleMapDrag}
         onPress={handleMapPress}
+        scrollEnabled={!isDrawing} // Disable panning while drawing
+        zoomEnabled={!isDrawing} // Disable zooming while drawing
       >
         {drawnPath.length > 0 && (
           <Polyline
@@ -166,6 +202,21 @@ export default function App() {
         </View>
       )}
 
+      {(routeDistance || routeDuration) && (
+        <View style={styles.infoOverlay}>
+          {routeDistance && (
+            <Text style={styles.infoText}>
+              Distance: {formatDistance(routeDistance)}
+            </Text>
+          )}
+          {routeDuration && (
+            <Text style={styles.infoText}>
+              Duration: {formatDuration(routeDuration)}
+            </Text>
+          )}
+        </View>
+      )}
+
       {errorMsg && (
         <View style={styles.errorOverlay}>
           <Text style={styles.errorText}>{errorMsg}</Text>
@@ -176,13 +227,8 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  map: {
-    width: "100%",
-    height: "100%",
-  },
+  container: { flex: 1 },
+  map: { width: "100%", height: "100%" },
   buttonContainer: {
     position: "absolute",
     bottom: 30,
@@ -199,20 +245,10 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  drawButton: {
-    backgroundColor: "#4CAF50",
-  },
-  stopButton: {
-    backgroundColor: "#FF9800",
-  },
-  clearButton: {
-    backgroundColor: "#F44336",
-  },
-  buttonText: {
-    color: "white",
-    fontWeight: "bold",
-    textAlign: "center",
-  },
+  drawButton: { backgroundColor: "#4CAF50" },
+  stopButton: { backgroundColor: "#FF9800" },
+  clearButton: { backgroundColor: "#F44336" },
+  buttonText: { color: "white", fontWeight: "bold", textAlign: "center" },
   calculatingOverlay: {
     position: "absolute",
     top: 0,
@@ -222,10 +258,7 @@ const styles = StyleSheet.create({
     padding: 15,
     alignItems: "center",
   },
-  calculatingText: {
-    color: "white",
-    fontSize: 16,
-  },
+  calculatingText: { color: "white", fontSize: 16 },
   errorOverlay: {
     position: "absolute",
     top: 0,
@@ -235,8 +268,14 @@ const styles = StyleSheet.create({
     padding: 15,
     alignItems: "center",
   },
-  errorText: {
-    color: "white",
-    fontSize: 16,
+  errorText: { color: "white", fontSize: 16 },
+  infoOverlay: {
+    position: "absolute",
+    top: 50,
+    left: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    padding: 10,
+    borderRadius: 8,
   },
+  infoText: { color: "white", fontSize: 14, marginVertical: 2 },
 });
