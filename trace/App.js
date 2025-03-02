@@ -624,7 +624,7 @@ export default function App() {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.button, { backgroundColor: "#9C27B0" }]}
+                  style={[styles.button]}
                   onPress={() => setShowHistoryScreen(true)}
                 >
                   <Text style={styles.buttonText}>View History</Text>
@@ -634,7 +634,7 @@ export default function App() {
               <>
                 {/* Navigation button when there's a route */}
                 <TouchableOpacity
-                  style={[styles.button, { backgroundColor: "#147EFB" }]}
+                  style={[styles.button]}
                   onPress={startNavigation}
                 >
                   <Text style={styles.buttonText}>Start Navigation</Text>
@@ -642,7 +642,7 @@ export default function App() {
 
                 {/* Save route button */}
                 <TouchableOpacity
-                  style={[styles.button, { backgroundColor: "#4CAF50" }]}
+                  style={[styles.button]}
                   onPress={handleSaveRoute}
                 >
                   <Text style={styles.buttonText}>Save Route</Text>
@@ -662,8 +662,7 @@ export default function App() {
           {calculatedPath.length > 0 && (
             <TouchableOpacity
               style={[
-                styles.button,
-                { backgroundColor: showOriginalPath ? "#9C27B0" : "#607D8B" },
+                styles.button
               ]}
               onPress={toggleOriginalPath}
             >
@@ -685,7 +684,7 @@ export default function App() {
 
           {calculatedPath.length > 0 && (
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: "#9C27B0" }]}
+              style={[styles.button]}
               onPress={() => setShowHistoryScreen(true)}
             >
               <Text style={styles.buttonText}>View History</Text>
@@ -808,18 +807,20 @@ const styles = StyleSheet.create({
     maxWidth: "90%",
   },
   button: {
-    padding: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 15,
+    paddingHorizontal: 20,
     borderRadius: 10,
-    margin: 5,
+    margin: 8,
+    backgroundColor: "#147EFB", // uniform blue color
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: 3,
     elevation: 5,
   },
-  drawButton: { backgroundColor: "#4CAF50" },
-  stopButton: { backgroundColor: "#FF9800" },
-  clearButton: { backgroundColor: "#F44336" },
   buttonText: { color: "white", fontWeight: "bold", textAlign: "center" },
   calculatingOverlay: {
     position: "absolute",
@@ -876,11 +877,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     marginLeft: 10,
-  },
-  exitNavButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: "rgba(0,0,0,0.2)",
   },
   navigationInfo: {
     backgroundColor: "white",
@@ -972,12 +968,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     width: "48%",
     alignItems: "center",
-  },
-  cancelButton: {
-    backgroundColor: "#ccc",
-  },
-  saveModalButton: {
-    backgroundColor: "#4CAF50",
   },
   modalButtonText: {
     color: "white",
