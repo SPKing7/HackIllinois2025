@@ -1,8 +1,10 @@
 // pathFinder.js
 import axios from "axios";
+import Constants from 'expo-constants';
+
 
 // Replace with your actual API key (store it securely in production)
-const GOOGLE_MAPS_API_KEY = "AIzaSyCOoH6FrJx05wpCXIr0yzGABy3LdEG7T80";
+const GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.googleMapsApiKey;
 
 /**
  * Gets a walkable path from a series of drawn points using the Google Directions API.
@@ -18,6 +20,7 @@ const GOOGLE_MAPS_API_KEY = "AIzaSyCOoH6FrJx05wpCXIr0yzGABy3LdEG7T80";
  * @returns {Promise<Object>}
  */
 export const getPathFromPoints = async (points) => {
+  console.log("Api key is: " + GOOGLE_MAPS_API_KEY);
   if (points.length < 2) {
     throw new Error("At least 2 points are required");
   }
@@ -51,7 +54,9 @@ export const getPathFromPoints = async (points) => {
           key: GOOGLE_MAPS_API_KEY,
         },
       }
-    );
+    ).catch((error) => {
+      console.error("Error in getPathFromPoints:", error);
+    });
 
     if (response.data.status !== "OK") {
       throw new Error("Directions API error: " + response.data.status);
