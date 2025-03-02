@@ -84,7 +84,8 @@ export default function App() {
   const calculatePath = async () => {
     setIsCalculating(true);
     try {
-      // Call our directions function which uses the Google Directions API
+      // Call our directions function which uses the Google Directions API.
+      // The drawn path is resampled every ~25 feet and simplified.
       const result = await getPathFromPoints(drawnPath);
       setCalculatedPath(result.polyline);
       setRouteDistance(result.distance);

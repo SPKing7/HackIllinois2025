@@ -11,7 +11,8 @@ const GOOGLE_MAPS_API_KEY = "AIzaSyCOoH6FrJx05wpCXIr0yzGABy3LdEG7T80";
  *  - distance: total distance in meters
  *  - duration: total duration in seconds
  *
- * The drawn path is first simplified using the Ramer–Douglas–Peucker algorithm.
+ * The drawn path is first resampled every 25 feet (~7.62 meters),
+ * then simplified using the Ramer–Douglas–Peucker algorithm.
  *
  * @param {Array} points - Array of lat/lng coordinates from the drawn path
  * @returns {Promise<Object>}
@@ -22,17 +23,20 @@ export const getPathFromPoints = async (points) => {
   }
 
   try {
-    // Simplify the path to reduce waypoints using Ramer–Douglas–Peucker
-    const simplified = simplifyPath(points, 0.0001);
+    // Resample the path every 25 feet (7.62 meters)
+    const resampled = resamplePath(points, 10);
+    // Simplify the resampled path
+    const simplified = simplifyPath(resampled, 0.0001);
 
-    // Extract origin, destination, and sample waypoints (up to 8)
+    // Use the first and last points as origin and destination
     const origin = simplified[0];
     const destination = simplified[simplified.length - 1];
+    // Use the intermediate points as via-waypoints (up to 8) so that the route is forced to follow the drawing.
     const waypoints = simplified.slice(1, -1);
     const sampledWaypoints = sampleWaypoints(waypoints, 8);
-
+    // Prefix each waypoint with "via:" to ensure a single continuous route
     const waypointsStr = sampledWaypoints
-      .map((p) => `${p.latitude},${p.longitude}`)
+      .map((p) => `via:${p.latitude},${p.longitude}`)
       .join("|");
 
     // Call the Google Directions API for walking directions
@@ -54,6 +58,7 @@ export const getPathFromPoints = async (points) => {
     }
 
     const route = response.data.routes[0];
+    // Decoded overview_polyline should be a single continuous route
     const polyline = decodePolyline(route.overview_polyline.points);
 
     // Sum distance and duration from all legs
@@ -70,6 +75,69 @@ export const getPathFromPoints = async (points) => {
     throw error;
   }
 };
+
+/**
+ * Resamples the input path so that there is a point approximately every "interval" meters.
+ * Ensures the first and last points are preserved.
+ */
+function resamplePath(points, interval) {
+  if (points.length < 2) return points;
+
+  const newPath = [points[0]];
+  let accumulated = 0;
+
+  for (let i = 1; i < points.length; i++) {
+    let prev = points[i - 1];
+    let curr = points[i];
+    let segmentDistance = getDistanceMeters(prev, curr);
+
+    while (accumulated + segmentDistance >= interval) {
+      let remaining = interval - accumulated;
+      let t = remaining / segmentDistance;
+      const newLat = prev.latitude + (curr.latitude - prev.latitude) * t;
+      const newLng = prev.longitude + (curr.longitude - prev.longitude) * t;
+      const newPoint = { latitude: newLat, longitude: newLng };
+      newPath.push(newPoint);
+      // Prepare for the next interval in the same segment:
+      segmentDistance -= remaining;
+      prev = newPoint;
+      accumulated = 0;
+    }
+    accumulated += segmentDistance;
+  }
+
+  // Ensure the last drawn point is included
+  const lastPoint = points[points.length - 1];
+  const finalPoint = newPath[newPath.length - 1];
+  if (
+    finalPoint.latitude !== lastPoint.latitude ||
+    finalPoint.longitude !== lastPoint.longitude
+  ) {
+    newPath.push(lastPoint);
+  }
+
+  return newPath;
+}
+
+/**
+ * Returns the distance between two lat/lng points in meters using the haversine formula.
+ */
+function getDistanceMeters(p1, p2) {
+  const R = 6371000; // Earth's radius in meters
+  const dLat = toRad(p2.latitude - p1.latitude);
+  const dLon = toRad(p2.longitude - p1.longitude);
+  const lat1 = toRad(p1.latitude);
+  const lat2 = toRad(p2.latitude);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function toRad(deg) {
+  return (deg * Math.PI) / 180;
+}
 
 /**
  * Simplifies a path using the Ramer–Douglas–Peucker algorithm.
@@ -115,10 +183,7 @@ function perpendicularDistance(point, lineStart, lineEnd) {
   const length = Math.sqrt(dx * dx + dy * dy);
   if (length === 0) return Math.sqrt((lat0 - lat1) ** 2 + (lon0 - lon1) ** 2);
 
-  const dist = Math.abs(
-    (dy * lat0 - dx * lon0 + lat2 * lon1 - lon2 * lat1) / length
-  );
-  return dist;
+  return Math.abs((dy * lat0 - dx * lon0 + lat2 * lon1 - lon2 * lat1) / length);
 }
 
 /**
