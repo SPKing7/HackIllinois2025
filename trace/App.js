@@ -22,6 +22,8 @@ export default function App() {
   const [isCalculating, setIsCalculating] = useState(false);
   const [routeDistance, setRouteDistance] = useState(null);
   const [routeDuration, setRouteDuration] = useState(null);
+  const [showOriginalPath, setShowOriginalPath] = useState(false); // New state for original path visibility toggle
+  const [mapKey, setMapKey] = useState(1); // Add state to force map re-rendering
   const mapRef = useRef(null);
 
   // Request location permission and get current location
@@ -51,6 +53,24 @@ export default function App() {
       );
     }
   }, [location, isDrawing]);
+
+  // Add new useEffect to handle calculated path updates
+  useEffect(() => {
+    if (calculatedPath.length > 0) {
+      // Force map to re-render when path is calculated
+      setMapKey(prevKey => prevKey + 1);
+      
+      // Optional: fit the map to show the entire route
+      if (mapRef.current && calculatedPath.length > 0) {
+        setTimeout(() => {
+          mapRef.current.fitToCoordinates(calculatedPath, {
+            edgePadding: { top: 50, right: 50, bottom: 150, left: 50 },
+            animated: true,
+          });
+        }, 500); // Short delay to ensure the map has time to re-render
+      }
+    }
+  }, [calculatedPath]);
 
   const handleStartDrawing = () => {
     setIsDrawing(true);
@@ -105,6 +125,10 @@ export default function App() {
     setRouteDuration(null);
   };
 
+  const toggleOriginalPath = () => {
+    setShowOriginalPath(!showOriginalPath);
+  };
+
   const initialRegion = location
     ? {
         latitude: location.coords.latitude,
@@ -134,6 +158,7 @@ export default function App() {
   return (
     <View style={styles.container}>
       <MapView
+        key={mapKey} // Add key prop to force re-render when it changes
         ref={mapRef}
         style={styles.map}
         initialRegion={initialRegion}
@@ -143,7 +168,8 @@ export default function App() {
         scrollEnabled={!isDrawing} // Disable panning while drawing
         zoomEnabled={!isDrawing} // Disable zooming while drawing
       >
-        {drawnPath.length > 0 && (
+        {/* Show drawn path based on the toggle state when a calculated route exists */}
+        {drawnPath.length > 0 && (showOriginalPath || calculatedPath.length === 0) && (
           <Polyline
             coordinates={drawnPath}
             strokeColor="#F00"
@@ -151,13 +177,19 @@ export default function App() {
             lineDashPattern={[1]}
           />
         )}
+        
+        {/* Calculated path and markers... */}
         {calculatedPath.length > 0 && (
           <Polyline
             coordinates={calculatedPath}
-            strokeColor="#00F"
-            strokeWidth={5}
+            strokeColor="#147EFB"
+            strokeWidth={6}
+            lineCap="round"
+            lineJoin="round"
           />
         )}
+        
+        {/* Keep the start/end markers visible regardless */}
         {drawnPath.length > 0 && (
           <Marker coordinate={drawnPath[0]} pinColor="green" title="Start" />
         )}
@@ -171,6 +203,7 @@ export default function App() {
       </MapView>
 
       <View style={styles.buttonContainer}>
+        {/* Drawing/finish buttons */}
         {!isDrawing ? (
           <TouchableOpacity
             style={[styles.button, styles.drawButton]}
@@ -187,6 +220,22 @@ export default function App() {
           </TouchableOpacity>
         )}
 
+        {/* Toggle original path visibility button - only show when we have a calculated route */}
+        {calculatedPath.length > 0 && (
+          <TouchableOpacity
+            style={[
+              styles.button, 
+              { backgroundColor: showOriginalPath ? "#9C27B0" : "#607D8B" }
+            ]}
+            onPress={toggleOriginalPath}
+          >
+            <Text style={styles.buttonText}>
+              {showOriginalPath ? "Hide Drawing" : "Show Drawing"}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Clear button */}
         {calculatedPath.length > 0 && (
           <TouchableOpacity
             style={[styles.button, styles.clearButton]}
@@ -235,6 +284,9 @@ const styles = StyleSheet.create({
     bottom: 30,
     alignSelf: "center",
     flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    maxWidth: "90%",
   },
   button: {
     padding: 15,
