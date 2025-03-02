@@ -6,15 +6,13 @@ import {
   TouchableOpacity,
   Text,
   Dimensions,
-  Image,
   SafeAreaView,
-  Platform,
   StatusBar,
 } from "react-native";
 import MapView, { Polyline, Marker } from "react-native-maps";
 import * as Location from "expo-location";
 import { getPathFromPoints } from "./pathFinder";
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons } from "@expo/vector-icons";
 
 const { width, height } = Dimensions.get("window");
 
@@ -27,14 +25,15 @@ export default function App() {
   const [isCalculating, setIsCalculating] = useState(false);
   const [routeDistance, setRouteDistance] = useState(null);
   const [routeDuration, setRouteDuration] = useState(null);
-  const [showOriginalPath, setShowOriginalPath] = useState(false); // New state for original path visibility toggle
-  const [mapKey, setMapKey] = useState(1); // Add state to force map re-rendering
+  const [showOriginalPath, setShowOriginalPath] = useState(false);
+  const [mapKey, setMapKey] = useState(1);
   const [isNavigating, setIsNavigating] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [remainingDistance, setRemainingDistance] = useState(null);
   const [eta, setEta] = useState(null);
   const [navigationSteps, setNavigationSteps] = useState([]);
-  const [userLocationSubscription, setUserLocationSubscription] = useState(null);
+  const [userLocationSubscription, setUserLocationSubscription] =
+    useState(null);
   const mapRef = useRef(null);
 
   // Request location permission and get current location
@@ -60,25 +59,22 @@ export default function App() {
           latitudeDelta: 0.0922,
           longitudeDelta: 0.0421,
         },
-        1000 // 1-second animation
+        1000
       );
     }
   }, [location, isDrawing]);
 
-  // Add new useEffect to handle calculated path updates
+  // Update map when calculated path changes
   useEffect(() => {
     if (calculatedPath.length > 0) {
-      // Force map to re-render when path is calculated
-      setMapKey(prevKey => prevKey + 1);
-      
-      // Optional: fit the map to show the entire route
+      setMapKey((prevKey) => prevKey + 1);
       if (mapRef.current && calculatedPath.length > 0) {
         setTimeout(() => {
           mapRef.current.fitToCoordinates(calculatedPath, {
             edgePadding: { top: 50, right: 50, bottom: 150, left: 50 },
             animated: true,
           });
-        }, 500); // Short delay to ensure the map has time to re-render
+        }, 500);
       }
     }
   }, [calculatedPath]);
@@ -86,7 +82,6 @@ export default function App() {
   // Initialize navigation steps when route is calculated
   useEffect(() => {
     if (calculatedPath.length > 0) {
-      // Generate navigation steps from the calculated path
       const steps = generateNavigationSteps(calculatedPath);
       setNavigationSteps(steps);
     }
@@ -94,38 +89,31 @@ export default function App() {
 
   // Active navigation tracking
   useEffect(() => {
-    // Only activate location tracking when in navigation mode
     if (isNavigating) {
-      // Start watching position with higher accuracy when navigating
       const startLocationTracking = async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          setErrorMsg('Permission to access location was denied for navigation');
+        if (status !== "granted") {
+          setErrorMsg(
+            "Permission to access location was denied for navigation"
+          );
           return;
         }
-
-        // Watch position with high accuracy when navigating
         const subscription = await Location.watchPositionAsync(
           {
             accuracy: Location.Accuracy.BestForNavigation,
-            distanceInterval: 5, // Update every 5 meters
-            timeInterval: 1000 // Or at least once per second
+            distanceInterval: 5,
+            timeInterval: 1000,
           },
-          location => {
-            // Update user location
+          (location) => {
             setLocation(location);
-            
-            // Update navigation progress
             updateNavigationProgress(location.coords);
           }
         );
-        
         setUserLocationSubscription(subscription);
       };
 
       startLocationTracking();
 
-      // Clean up the subscription when navigation ends
       return () => {
         if (userLocationSubscription) {
           userLocationSubscription.remove();
@@ -166,8 +154,6 @@ export default function App() {
   const calculatePath = async () => {
     setIsCalculating(true);
     try {
-      // Call our directions function which uses the Google Directions API.
-      // The drawn path is resampled every ~25 feet and simplified.
       const result = await getPathFromPoints(drawnPath);
       setCalculatedPath(result.polyline);
       setRouteDistance(result.distance);
@@ -205,10 +191,9 @@ export default function App() {
         longitudeDelta: 0.0421,
       };
 
-  // Helpers to format distance and duration
   const formatDistance = (meters) => {
-    if (meters < 1000) return `${meters} m`;
-    return `${(meters / 1000).toFixed(2)} km`;
+    if (meters < 1000) return `${Math.round(meters)} m`;
+    return `${Math.round(meters / 1000)} km`;
   };
 
   const formatDuration = (seconds) => {
@@ -217,55 +202,53 @@ export default function App() {
     return `${minutes} min ${secs} sec`;
   };
 
-  // Generate turn-by-turn directions from the route
   const generateNavigationSteps = (routePath) => {
     if (!routePath || routePath.length < 2) return [];
-    
+
     const steps = [];
-    
-    // For simplicity, we'll create steps at key points
-    // In a real app, you'd use the leg/step data from the directions API
-    for (let i = 0; i < routePath.length - 1; i += Math.max(1, Math.floor(routePath.length / 10))) {
+    for (
+      let i = 0;
+      i < routePath.length - 1;
+      i += Math.max(1, Math.floor(routePath.length / 10))
+    ) {
       const current = routePath[i];
-      const next = routePath[Math.min(i + Math.floor(routePath.length / 10), routePath.length - 1)];
-      
-      // Calculate bearing to determine direction
+      const next =
+        routePath[
+          Math.min(i + Math.floor(routePath.length / 10), routePath.length - 1)
+        ];
       const bearing = calculateBearing(current, next);
       const direction = getDirectionFromBearing(bearing);
-      
+
       steps.push({
         point: current,
         nextPoint: next,
         instruction: `Go ${direction}`,
         distance: getDistanceMeters(current, next),
-        bearing: bearing
+        bearing: bearing,
       });
     }
-    
-    // Add final step
     steps.push({
       point: routePath[routePath.length - 1],
       instruction: "Arrive at destination",
       distance: 0,
-      isLast: true
+      isLast: true,
     });
-    
+
     return steps;
   };
 
-  // Update navigation progress based on user's current location
   const updateNavigationProgress = (userCoords) => {
     if (!navigationSteps || navigationSteps.length === 0) return;
-    
-    // Find which step the user is closest to
-    const userPoint = { latitude: userCoords.latitude, longitude: userCoords.longitude };
-    
-    // Find closest point on route
+
+    const userPoint = {
+      latitude: userCoords.latitude,
+      longitude: userCoords.longitude,
+    };
     let minDistance = Infinity;
     let closestStepIndex = 0;
-    
+
     navigationSteps.forEach((step, index) => {
-      if (index >= currentStep) { // Only look at steps ahead
+      if (index >= currentStep) {
         const distance = getDistanceMeters(userPoint, step.point);
         if (distance < minDistance) {
           minDistance = distance;
@@ -273,59 +256,64 @@ export default function App() {
         }
       }
     });
-    
-    // If user is close to next step, advance
+
     if (closestStepIndex > currentStep) {
       setCurrentStep(closestStepIndex);
     }
-    
-    // Calculate remaining distance
+
     let remaining = 0;
     for (let i = closestStepIndex; i < navigationSteps.length - 1; i++) {
       remaining += navigationSteps[i].distance || 0;
     }
     setRemainingDistance(remaining);
-    
-    // Calculate ETA (assuming average walking speed of 1.4 m/s)
-    const walkingSpeed = 1.4; // meters per second
+
+    const walkingSpeed = 1.4; // m/s
     const estimatedSeconds = remaining / walkingSpeed;
     setEta(new Date(Date.now() + estimatedSeconds * 1000));
   };
-  
-  // Helper functions for navigation
+
   const calculateBearing = (start, end) => {
     const startLat = toRad(start.latitude);
     const startLng = toRad(start.longitude);
     const endLat = toRad(end.latitude);
     const endLng = toRad(end.longitude);
-    
+
     const y = Math.sin(endLng - startLng) * Math.cos(endLat);
-    const x = Math.cos(startLat) * Math.sin(endLat) -
-              Math.sin(startLat) * Math.cos(endLat) * Math.cos(endLng - startLng);
-    
+    const x =
+      Math.cos(startLat) * Math.sin(endLat) -
+      Math.sin(startLat) * Math.cos(endLat) * Math.cos(endLng - startLng);
     let bearing = Math.atan2(y, x);
     bearing = toDeg(bearing);
     bearing = (bearing + 360) % 360;
-    
+
     return bearing;
   };
-  
+
   const getDirectionFromBearing = (bearing) => {
-    const directions = ['north', 'northeast', 'east', 'southeast', 
-                        'south', 'southwest', 'west', 'northwest', 'north'];
+    const directions = [
+      "north",
+      "northeast",
+      "east",
+      "southeast",
+      "south",
+      "southwest",
+      "west",
+      "northwest",
+      "north",
+    ];
     return directions[Math.round(bearing / 45)];
   };
-  
+
   const toRad = (deg) => {
-    return deg * Math.PI / 180;
+    return (deg * Math.PI) / 180;
   };
-  
+
   const toDeg = (rad) => {
-    return rad * 180 / Math.PI;
+    return (rad * 180) / Math.PI;
   };
-  
+
   const getDistanceMeters = (p1, p2) => {
-    const R = 6371000; // Earth's radius in meters
+    const R = 6371000;
     const dLat = toRad(p2.latitude - p1.latitude);
     const dLon = toRad(p2.longitude - p1.longitude);
     const lat1 = toRad(p1.latitude);
@@ -337,33 +325,30 @@ export default function App() {
     return R * c;
   };
 
-  // Start turn-by-turn navigation
   const startNavigation = () => {
     setIsNavigating(true);
     setCurrentStep(0);
-    
-    // Zoom to user's current location with route visible
     if (mapRef.current && location) {
       setTimeout(() => {
-        mapRef.current.animateCamera({
-          center: {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
+        mapRef.current.animateCamera(
+          {
+            center: {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            },
+            pitch: 60,
+            heading: 0,
+            altitude: 500,
+            zoom: 18,
           },
-          pitch: 60, // Tilt the map for a 3D navigation feel
-          heading: 0, // North-up initially
-          altitude: 500, // Higher altitude for better context
-          zoom: 18, // Close zoom for navigation
-        }, { duration: 1000 });
+          { duration: 1000 }
+        );
       }, 500);
     }
   };
 
-  // Stop navigation and return to normal map view
   const stopNavigation = () => {
     setIsNavigating(false);
-    
-    // Reset map view
     if (mapRef.current && calculatedPath.length > 0) {
       setTimeout(() => {
         mapRef.current.fitToCoordinates(calculatedPath, {
@@ -372,52 +357,52 @@ export default function App() {
         });
       }, 500);
     }
-    
-    // Clean up navigation state
     if (userLocationSubscription) {
       userLocationSubscription.remove();
       setUserLocationSubscription(null);
     }
   };
 
-  // Format ETA time
   const formatETA = (eta) => {
     if (!eta) return "--:--";
     const hours = eta.getHours();
     const minutes = eta.getMinutes();
-    return `${hours}:${minutes < 10 ? '0' : ''}${minutes}`;
+    return `${hours}:${minutes < 10 ? "0" : ""}${minutes}`;
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle={isNavigating ? "light-content" : "dark-content"} />
       <MapView
-        key={mapKey} // Add key prop to force re-render when it changes
+        key={mapKey}
         ref={mapRef}
         style={styles.map}
         initialRegion={initialRegion}
         showsUserLocation={true}
         followsUserLocation={isNavigating}
         showsCompass={isNavigating}
-        scrollEnabled={!isDrawing && !isNavigating} // Disable panning while drawing
-        zoomEnabled={!isDrawing && !isNavigating} // Disable zooming while drawing
+        scrollEnabled={!isDrawing}
+        zoomEnabled={!isDrawing}
         rotateEnabled={isNavigating}
         pitchEnabled={isNavigating}
         onPanDrag={isDrawing ? handleMapDrag : null}
         onPress={isDrawing ? handleMapPress : null}
-        mapPadding={isNavigating ? { top: 0, right: 0, bottom: 200, left: 0 } : null}
+        mapPadding={
+          isNavigating ? { top: 0, right: 0, bottom: 200, left: 0 } : null
+        }
       >
-        {/* Show drawn path based on the toggle state when a calculated route exists */}
-        {drawnPath.length > 0 && !isNavigating && (showOriginalPath || calculatedPath.length === 0) && (
-          <Polyline
-            coordinates={drawnPath}
-            strokeColor="#F00"
-            strokeWidth={3}
-            lineDashPattern={[1]}
-          />
-        )}
-        
-        {/* Calculated path and markers... */}
+        {/* Drawn path */}
+        {drawnPath.length > 0 &&
+          (showOriginalPath || calculatedPath.length === 0) && (
+            <Polyline
+              coordinates={drawnPath}
+              strokeColor="#F00"
+              strokeWidth={3}
+              lineDashPattern={[1]}
+            />
+          )}
+
+        {/* Calculated path */}
         {calculatedPath.length > 0 && (
           <Polyline
             coordinates={calculatedPath}
@@ -428,12 +413,12 @@ export default function App() {
             zIndex={1}
           />
         )}
-        
-        {/* Keep the start/end markers visible regardless */}
-        {drawnPath.length > 0 && !isNavigating && (
+
+        {/* Always show start/end markers */}
+        {drawnPath.length > 0 && (
           <Marker coordinate={drawnPath[0]} pinColor="green" title="Start" />
         )}
-        {drawnPath.length > 1 && !isNavigating && (
+        {drawnPath.length > 1 && (
           <Marker
             coordinate={drawnPath[drawnPath.length - 1]}
             pinColor="red"
@@ -443,7 +428,7 @@ export default function App() {
 
         {/* Current navigation step marker */}
         {isNavigating && navigationSteps.length > currentStep && (
-          <Marker 
+          <Marker
             coordinate={navigationSteps[currentStep].point}
             anchor={{ x: 0.5, y: 0.5 }}
           >
@@ -454,41 +439,68 @@ export default function App() {
         )}
       </MapView>
 
-      {/* Navigation overlay - shown only when navigating */}
+      {/* Top-left overlay now shows navigation info if available */}
+      {(routeDistance || routeDuration || remainingDistance !== null) && (
+        <View style={styles.infoOverlay}>
+          {remainingDistance !== null ? (
+            <>
+              <Text style={styles.infoText}>
+                Distance: {formatDistance(remainingDistance)}
+              </Text>
+              <Text style={styles.infoText}>
+                ETA: {eta ? formatETA(eta) : "--:--"}
+              </Text>
+            </>
+          ) : (
+            <>
+              {routeDistance && (
+                <Text style={styles.infoText}>
+                  Distance: {formatDistance(routeDistance)}
+                </Text>
+              )}
+              {routeDuration && (
+                <Text style={styles.infoText}>
+                  Duration: {formatDuration(routeDuration)}
+                </Text>
+              )}
+            </>
+          )}
+        </View>
+      )}
+
       {isNavigating && navigationSteps.length > currentStep && (
         <View style={styles.navigationOverlay}>
-          {/* Top bar with current instruction */}
           <View style={styles.navigationHeader}>
             <View style={styles.directionContainer}>
-              <MaterialIcons 
-                name={getNavigationIcon(navigationSteps[currentStep].instruction)} 
-                size={36} 
-                color="white" 
+              <MaterialIcons
+                name={getNavigationIcon(
+                  navigationSteps[currentStep].instruction
+                )}
+                size={36}
+                color="white"
               />
               <Text style={styles.directionText}>
                 {navigationSteps[currentStep].instruction}
               </Text>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.exitNavButton}
               onPress={stopNavigation}
             >
               <MaterialIcons name="close" size={24} color="white" />
             </TouchableOpacity>
           </View>
-          
-          {/* Bottom information card */}
           <View style={styles.navigationInfo}>
             <View style={styles.navigationDetail}>
               <Text style={styles.distanceText}>
-                {remainingDistance ? formatDistance(remainingDistance) : "Calculating..."}
+                {remainingDistance
+                  ? formatDistance(remainingDistance)
+                  : "Calculating..."}
               </Text>
               <Text style={styles.etaText}>
                 ETA {eta ? formatETA(eta) : "--:--"}
               </Text>
             </View>
-            
-            {/* Next step preview */}
             {currentStep < navigationSteps.length - 1 && (
               <View style={styles.nextDirectionContainer}>
                 <Text style={styles.nextLabel}>NEXT</Text>
@@ -501,10 +513,8 @@ export default function App() {
         </View>
       )}
 
-      {/* Show normal UI when not navigating */}
       {!isNavigating && (
         <View style={styles.buttonContainer}>
-          {/* Drawing/finish buttons */}
           {!isDrawing ? (
             calculatedPath.length === 0 ? (
               <TouchableOpacity
@@ -514,7 +524,6 @@ export default function App() {
                 <Text style={styles.buttonText}>Draw Route</Text>
               </TouchableOpacity>
             ) : (
-              // Show navigation button when there's a route
               <TouchableOpacity
                 style={[styles.button, { backgroundColor: "#147EFB" }]}
                 onPress={startNavigation}
@@ -531,12 +540,11 @@ export default function App() {
             </TouchableOpacity>
           )}
 
-          {/* Toggle original path visibility button - only show when we have a calculated route */}
           {calculatedPath.length > 0 && (
             <TouchableOpacity
               style={[
-                styles.button, 
-                { backgroundColor: showOriginalPath ? "#9C27B0" : "#607D8B" }
+                styles.button,
+                { backgroundColor: showOriginalPath ? "#9C27B0" : "#607D8B" },
               ]}
               onPress={toggleOriginalPath}
             >
@@ -546,7 +554,6 @@ export default function App() {
             </TouchableOpacity>
           )}
 
-          {/* Clear button */}
           {calculatedPath.length > 0 && (
             <TouchableOpacity
               style={[styles.button, styles.clearButton]}
@@ -564,52 +571,36 @@ export default function App() {
         </View>
       )}
 
-      {(routeDistance || routeDuration) && !isNavigating && (
-        <View style={styles.infoOverlay}>
-          {routeDistance && (
-            <Text style={styles.infoText}>
-              Distance: {formatDistance(routeDistance)}
-            </Text>
-          )}
-          {routeDuration && (
-            <Text style={styles.infoText}>
-              Duration: {formatDuration(routeDuration)}
-            </Text>
-          )}
-        </View>
-      )}
-
       {errorMsg && (
         <View style={styles.errorOverlay}>
           <Text style={styles.errorText}>{errorMsg}</Text>
         </View>
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
-// Helper function to get icon based on instruction
 const getNavigationIcon = (instruction) => {
-  if (instruction.includes('north')) return 'arrow-upward';
-  if (instruction.includes('northeast')) return 'north-east';
-  if (instruction.includes('east')) return 'arrow-forward';
-  if (instruction.includes('southeast')) return 'south-east';
-  if (instruction.includes('south')) return 'arrow-downward';
-  if (instruction.includes('southwest')) return 'south-west';
-  if (instruction.includes('west')) return 'arrow-back';
-  if (instruction.includes('northwest')) return 'north-west';
-  if (instruction.includes('Arrive')) return 'place';
-  return 'directions';
+  if (instruction.includes("north")) return "arrow-upward";
+  if (instruction.includes("northeast")) return "north-east";
+  if (instruction.includes("east")) return "arrow-forward";
+  if (instruction.includes("southeast")) return "south-east";
+  if (instruction.includes("south")) return "arrow-downward";
+  if (instruction.includes("southwest")) return "south-west";
+  if (instruction.includes("west")) return "arrow-back";
+  if (instruction.includes("northwest")) return "north-west";
+  if (instruction.includes("Arrive")) return "place";
+  return "directions";
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#fff' 
+  container: {
+    flex: 1,
+    backgroundColor: "#fff",
   },
-  map: { 
-    width: '100%', 
-    height: '100%' 
+  map: {
+    width: "100%",
+    height: "100%",
   },
   buttonContainer: {
     position: "absolute",
@@ -633,7 +624,11 @@ const styles = StyleSheet.create({
   drawButton: { backgroundColor: "#4CAF50" },
   stopButton: { backgroundColor: "#FF9800" },
   clearButton: { backgroundColor: "#F44336" },
-  buttonText: { color: "white", fontWeight: "bold", textAlign: "center" },
+  buttonText: {
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center",
+  },
   calculatingOverlay: {
     position: "absolute",
     top: 0,
@@ -663,84 +658,83 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   infoText: { color: "white", fontSize: 14, marginVertical: 2 },
-  // Navigation mode styles
   navigationOverlay: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
   },
   navigationHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#147EFB',
+    flexDirection: "row",
+    backgroundColor: "#147EFB",
     padding: 15,
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    justifyContent: "space-between",
     margin: 10,
     borderRadius: 12,
   },
   directionContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
   },
   directionText: {
-    color: 'white',
+    color: "white",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 10,
   },
   exitNavButton: {
     padding: 8,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
   navigationInfo: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 15,
     marginHorizontal: 10,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
   },
   navigationDetail: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 10,
   },
   distanceText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
   },
   etaText: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
   },
   nextDirectionContainer: {
     borderTopWidth: 1,
-    borderColor: '#eee',
+    borderColor: "#eee",
     paddingTop: 10,
   },
   nextLabel: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
     marginBottom: 5,
   },
   nextDirectionText: {
     fontSize: 14,
-    color: '#333',
+    color: "#333",
   },
   nextStepMarker: {
-    backgroundColor: '#147EFB',
+    backgroundColor: "#147EFB",
     borderRadius: 20,
     padding: 6,
     borderWidth: 2,
-    borderColor: 'white',
+    borderColor: "white",
   },
 });
