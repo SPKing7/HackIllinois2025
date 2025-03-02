@@ -674,67 +674,67 @@ export default function App() {
           )}
 
           {/* Clear button */}
-          {calculatedPath.length > 0 && (
-            <TouchableOpacity
-              style={[styles.button, styles.clearButton]}
-              onPress={clearAll}
-            >
-              <Text style={styles.buttonText}>Clear All</Text>
-            </TouchableOpacity>
-          )}
+                {calculatedPath.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.button, styles.clearButton, { backgroundColor: 'red' }]}
+                  onPress={clearAll}
+                >
+                  <Text style={styles.buttonText}>Clear All</Text>
+                </TouchableOpacity>
+                )}
 
-          {calculatedPath.length > 0 && (
-            <TouchableOpacity
-              style={[styles.button]}
-              onPress={() => setShowHistoryScreen(true)}
-            >
-              <Text style={styles.buttonText}>View History</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
-      {isCalculating && (
-        <View style={styles.calculatingOverlay}>
-          <Text style={styles.calculatingText}>Calculating Route...</Text>
-        </View>
-      )}
-
-      {(routeDistance || routeDuration || remainingDistance !== null) && (
-        <View style={styles.infoOverlay}>
-          {remainingDistance !== null ? (
-            <>
-              <Text style={styles.infoText}>
-                Distance: {formatDistance(remainingDistance)}
-              </Text>
-              <Text style={styles.infoText}>
-                ETA: {eta ? formatETA(eta) : "--:--"}
-              </Text>
-            </>
-          ) : (
-            <>
-              {routeDistance && (
-                <Text style={styles.infoText}>
-                  Distance: {formatDistance(routeDistance)}
-                </Text>
+                {calculatedPath.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.button]}
+                  onPress={() => setShowHistoryScreen(true)}
+                >
+                  <Text style={styles.buttonText}>View History</Text>
+                </TouchableOpacity>
+                )}
+              </View>
               )}
-              {routeDuration && (
-                <Text style={styles.infoText}>
-                  Duration: {formatDuration(routeDuration)}
-                </Text>
+
+              {isCalculating && (
+              <View style={styles.calculatingOverlay}>
+                <Text style={styles.calculatingText}>Calculating Route...</Text>
+              </View>
               )}
-            </>
-          )}
-        </View>
-      )}
 
-      {errorMsg && (
-        <View style={styles.errorOverlay}>
-          <Text style={styles.errorText}>{errorMsg}</Text>
-        </View>
-      )}
+              {(routeDistance || routeDuration || remainingDistance !== null) && (
+              <View style={styles.infoOverlay}>
+                {remainingDistance !== null ? (
+                <>
+                  <Text style={styles.infoText}>
+                  Distance: {formatDistance(remainingDistance)}
+                  </Text>
+                  <Text style={styles.infoText}>
+                  ETA: {eta ? formatETA(eta) : "--:--"}
+                  </Text>
+                </>
+                ) : (
+                <>
+                  {routeDistance && (
+                  <Text style={styles.infoText}>
+                    Distance: {formatDistance(routeDistance)}
+                  </Text>
+                  )}
+                  {routeDuration && (
+                  <Text style={styles.infoText}>
+                    Duration: {formatDuration(routeDuration)}
+                  </Text>
+                  )}
+                </>
+                )}
+              </View>
+              )}
 
-      {/* Save Route Modal */}
+              {errorMsg && (
+              <View style={styles.errorOverlay}>
+                <Text style={styles.errorText}>{errorMsg}</Text>
+              </View>
+              )}
+
+              {/* Save Route Modal */}
       <Modal
         visible={showSaveModal}
         transparent={true}
