@@ -1,8 +1,10 @@
 // pathFinder.js
 import axios from "axios";
+import Config from "react-native-config";
+
 
 // Replace with your actual API key (store it securely in production)
-const GOOGLE_MAPS_API_KEY = "AIzaSyCOoH6FrJx05wpCXIr0yzGABy3LdEG7T80";
+const GOOGLE_MAPS_API_KEY = Config.GOOGLE_MAPS_API_KEY;
 
 /**
  * Gets a walkable path from a series of drawn points using the Google Directions API.
