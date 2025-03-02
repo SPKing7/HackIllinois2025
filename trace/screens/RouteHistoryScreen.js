@@ -34,7 +34,6 @@ export default function RouteHistoryScreen({ navigation, onSelectRoute }) {
     setLoading(true);
     try {
       const savedRoutes = await getSavedRoutes();
-      // Sort by most recent first
       savedRoutes.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       setRoutes(savedRoutes);
     } catch (error) {
@@ -54,7 +53,7 @@ export default function RouteHistoryScreen({ navigation, onSelectRoute }) {
         onPress: async () => {
           try {
             await deleteRoute(routeId);
-            loadRoutes(); // Refresh the list
+            loadRoutes(); 
           } catch (error) {
             Alert.alert("Error", "Failed to delete route");
           }
@@ -72,7 +71,7 @@ export default function RouteHistoryScreen({ navigation, onSelectRoute }) {
     if (editingId) {
       try {
         await updateRouteName(editingId, editName);
-        loadRoutes(); // Refresh the list
+        loadRoutes();
         setEditingId(null);
         setEditName("");
       } catch (error) {
@@ -219,7 +218,6 @@ export default function RouteHistoryScreen({ navigation, onSelectRoute }) {
       };
     }
 
-    // Calculate the bounding box for the coordinates
     let minLat = coordinates[0].latitude;
     let maxLat = coordinates[0].latitude;
     let minLng = coordinates[0].longitude;
@@ -232,7 +230,6 @@ export default function RouteHistoryScreen({ navigation, onSelectRoute }) {
       maxLng = Math.max(maxLng, coord.longitude);
     });
 
-    // Add padding
     const latDelta = (maxLat - minLat) * 1.5 || 0.01;
     const lngDelta = (maxLng - minLng) * 1.5 || 0.01;
 
@@ -256,7 +253,7 @@ export default function RouteHistoryScreen({ navigation, onSelectRoute }) {
           <MaterialIcons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
         <Text style={styles.title}>Saved Routes</Text>
-        <View style={{ width: 24 }} /* Spacer for alignment */ />
+        <View style={{ width: 24 }}/>
       </View>
 
       {loading ? (
@@ -355,7 +352,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginRight: 24, // Make space for delete button
+    marginRight: 24, 
   },
   routeName: {
     fontSize: 16,
