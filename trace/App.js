@@ -442,15 +442,16 @@ export default function App() {
     }
 
     try {
-      await saveRoute({
+      const savedRouteId = await saveRoute({
         name: routeName,
         drawnPath,
         calculatedPath,
         distance: routeDistance,
         duration: routeDuration,
       });
-
+      
       setShowSaveModal(false);
+      setRouteName(''); // Clear the route name for next time
       Alert.alert("Success", "Route saved successfully");
     } catch (error) {
       console.error("Error saving route:", error);
@@ -743,26 +744,31 @@ export default function App() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Save Route</Text>
-
+            
             <TextInput
               style={styles.nameInput}
               value={routeName}
-              onChangeText={setRouteName}
+              onChangeText={(text) => setRouteName(text)}
               placeholder="Enter a name for this route"
               autoFocus
+              returnKeyType="done"
             />
-
+            
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setShowSaveModal(false)}
+              <TouchableOpacity 
+                style={[styles.modalButton, { backgroundColor: '#ccc' }]}
+                onPress={() => {
+                  setShowSaveModal(false);
+                  setRouteName(''); // Clear route name on cancel
+                }}
               >
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalButton, styles.saveModalButton]}
+              
+              <TouchableOpacity 
+                style={[styles.modalButton, { backgroundColor: '#4CAF50' }]}
                 onPress={saveCurrentRoute}
+                accessibilityLabel="Save route"
               >
                 <Text style={styles.modalButtonText}>Save</Text>
               </TouchableOpacity>
@@ -968,6 +974,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     width: "48%",
     alignItems: "center",
+  },
+  saveModalButton: {
+    backgroundColor: "#4CAF50",
+  },
+  cancelButton: {
+    backgroundColor: "#ccc",
   },
   modalButtonText: {
     color: "white",
