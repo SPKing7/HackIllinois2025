@@ -207,7 +207,6 @@ export default function RouteHistoryScreen({ navigation, onSelectRoute }) {
     );
   };
 
-  // Helper to generate map region from route coordinates
   const getRegionForRoute = (coordinates) => {
     if (!coordinates || coordinates.length === 0) {
       return {
