@@ -17,9 +17,9 @@ import {
 import MapView, { Polyline, Marker } from "react-native-maps";
 import * as Location from "expo-location";
 import { getPathFromPoints } from "./pathFinder";
-import { MaterialIcons } from '@expo/vector-icons';
-import RouteHistoryScreen from './screens/RouteHistoryScreen';
-import { saveRoute } from './utils/routeStorage';
+import { MaterialIcons } from "@expo/vector-icons";
+import RouteHistoryScreen from "./screens/RouteHistoryScreen";
+import { saveRoute } from "./utils/routeStorage";
 
 const { width, height } = Dimensions.get("window");
 
@@ -39,9 +39,10 @@ export default function App() {
   const [remainingDistance, setRemainingDistance] = useState(null);
   const [eta, setEta] = useState(null);
   const [navigationSteps, setNavigationSteps] = useState([]);
-  const [userLocationSubscription, setUserLocationSubscription] = useState(null);
+  const [userLocationSubscription, setUserLocationSubscription] =
+    useState(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
-  const [routeName, setRouteName] = useState('');
+  const [routeName, setRouteName] = useState("");
   const [showHistoryScreen, setShowHistoryScreen] = useState(false);
   const mapRef = useRef(null);
 
@@ -77,8 +78,8 @@ export default function App() {
   useEffect(() => {
     if (calculatedPath.length > 0) {
       // Force map to re-render when path is calculated
-      setMapKey(prevKey => prevKey + 1);
-      
+      setMapKey((prevKey) => prevKey + 1);
+
       // Optional: fit the map to show the entire route
       if (mapRef.current && calculatedPath.length > 0) {
         setTimeout(() => {
@@ -107,8 +108,10 @@ export default function App() {
       // Start watching position with higher accuracy when navigating
       const startLocationTracking = async () => {
         const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          setErrorMsg('Permission to access location was denied for navigation');
+        if (status !== "granted") {
+          setErrorMsg(
+            "Permission to access location was denied for navigation"
+          );
           return;
         }
 
@@ -117,17 +120,17 @@ export default function App() {
           {
             accuracy: Location.Accuracy.BestForNavigation,
             distanceInterval: 5, // Update every 5 meters
-            timeInterval: 1000 // Or at least once per second
+            timeInterval: 1000, // Or at least once per second
           },
-          location => {
+          (location) => {
             // Update user location
             setLocation(location);
-            
+
             // Update navigation progress
             updateNavigationProgress(location.coords);
           }
         );
-        
+
         setUserLocationSubscription(subscription);
       };
 
@@ -215,8 +218,8 @@ export default function App() {
 
   // Helpers to format distance and duration
   const formatDistance = (meters) => {
-    if (meters < 1000) return `${meters} m`;
-    return `${(meters / 1000).toFixed(2)} km`;
+    if (meters < 1000) return `${Math.round(meters)} m`;
+    return `${Math.round(meters / 1000)} km`;
   };
 
   const formatDuration = (seconds) => {
@@ -228,52 +231,63 @@ export default function App() {
   // Generate turn-by-turn directions from the route
   const generateNavigationSteps = (routePath) => {
     if (!routePath || routePath.length < 2) return [];
-    
+
     const steps = [];
-    
+
     // For simplicity, we'll create steps at key points
     // In a real app, you'd use the leg/step data from the directions API
-    for (let i = 0; i < routePath.length - 1; i += Math.max(1, Math.floor(routePath.length / 10))) {
+    for (
+      let i = 0;
+      i < routePath.length - 1;
+      i += Math.max(1, Math.floor(routePath.length / 10))
+    ) {
       const current = routePath[i];
-      const next = routePath[Math.min(i + Math.floor(routePath.length / 10), routePath.length - 1)];
-      
+      const next =
+        routePath[
+          Math.min(i + Math.floor(routePath.length / 10), routePath.length - 1)
+        ];
+
       // Calculate bearing to determine direction
       const bearing = calculateBearing(current, next);
       const direction = getDirectionFromBearing(bearing);
-      
+
       steps.push({
         point: current,
         nextPoint: next,
         instruction: `Go ${direction}`,
         distance: getDistanceMeters(current, next),
-        bearing: bearing
+        bearing: bearing,
       });
     }
-    
+
     // Add final step
     steps.push({
       point: routePath[routePath.length - 1],
       instruction: "Arrive at destination",
       distance: 0,
-      isLast: true
+      isLast: true,
     });
-    
+
     return steps;
   };
 
   // Update navigation progress based on user's current location
   const updateNavigationProgress = (userCoords) => {
     if (!navigationSteps || navigationSteps.length === 0) return;
-    
+
     // Find which step the user is closest to
-    const userPoint = { latitude: userCoords.latitude, longitude: userCoords.longitude };
-    
+    const userPoint = {
+      latitude: userCoords.latitude,
+      longitude: userCoords.longitude,
+    };
+
     // Find closest point on route
     let minDistance = Infinity;
     let closestStepIndex = 0;
-    
+
     navigationSteps.forEach((step, index) => {
-      if (index >= currentStep) { // Only look at steps ahead
+      if (index >= currentStep) {
+        // Only look at steps ahead
         const distance = getDistanceMeters(userPoint, step.point);
         if (distance < minDistance) {
           minDistance = distance;
@@ -281,57 +295,67 @@ export default function App() {
         }
       }
     });
-    
+
     // If user is close to next step, advance
     if (closestStepIndex > currentStep) {
       setCurrentStep(closestStepIndex);
     }
-    
+
     // Calculate remaining distance
     let remaining = 0;
     for (let i = closestStepIndex; i < navigationSteps.length - 1; i++) {
       remaining += navigationSteps[i].distance || 0;
     }
     setRemainingDistance(remaining);
-    
+
     // Calculate ETA (assuming average walking speed of 1.4 m/s)
     const walkingSpeed = 1.4; // meters per second
     const estimatedSeconds = remaining / walkingSpeed;
     setEta(new Date(Date.now() + estimatedSeconds * 1000));
   };
-  
+
   // Helper functions for navigation
   const calculateBearing = (start, end) => {
     const startLat = toRad(start.latitude);
     const startLng = toRad(start.longitude);
     const endLat = toRad(end.latitude);
     const endLng = toRad(end.longitude);
-    
+
     const y = Math.sin(endLng - startLng) * Math.cos(endLat);
-    const x = Math.cos(startLat) * Math.sin(endLat) -
-              Math.sin(startLat) * Math.cos(endLat) * Math.cos(endLng - startLng);
-    
+    const x =
+      Math.cos(startLat) * Math.sin(endLat) -
+      Math.sin(startLat) * Math.cos(endLat) * Math.cos(endLng - startLng);
+
     let bearing = Math.atan2(y, x);
     bearing = toDeg(bearing);
     bearing = (bearing + 360) % 360;
-    
+
     return bearing;
   };
-  
+
   const getDirectionFromBearing = (bearing) => {
-    const directions = ['north', 'northeast', 'east', 'southeast', 
-                        'south', 'southwest', 'west', 'northwest', 'north'];
+    const directions = [
+      "north",
+      "northeast",
+      "east",
+      "southeast",
+      "south",
+      "southwest",
+      "west",
+      "northwest",
+      "north",
+    ];
     return directions[Math.round(bearing / 45)];
   };
-  
+
   const toRad = (deg) => {
-    return deg * Math.PI / 180;
+    return (deg * Math.PI) / 180;
   };
-  
+
   const toDeg = (rad) => {
-    return rad * 180 / Math.PI;
+    return (rad * 180) / Math.PI;
   };
-  
+
   const getDistanceMeters = (p1, p2) => {
     const R = 6371000; // Earth's radius in meters
     const dLat = toRad(p2.latitude - p1.latitude);
@@ -349,20 +373,23 @@ export default function App() {
   const startNavigation = () => {
     setIsNavigating(true);
     setCurrentStep(0);
-    
+
     // Zoom to user's current location with route visible
     if (mapRef.current && location) {
       setTimeout(() => {
-        mapRef.current.animateCamera({
-          center: {
-            latitude: location.coords.latitude,
-            longitude: location.coords.longitude,
+        mapRef.current.animateCamera(
+          {
+            center: {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+            },
+            pitch: 60, // Tilt the map for a 3D navigation feel
+            heading: 0, // North-up initially
+            altitude: 500, // Higher altitude for better context
+            zoom: 18, // Close zoom for navigation
           },
-          pitch: 60, // Tilt the map for a 3D navigation feel
-          heading: 0, // North-up initially
-          altitude: 500, // Higher altitude for better context
-          zoom: 18, // Close zoom for navigation
-        }, { duration: 1000 });
+          { duration: 1000 }
+        );
       }, 500);
     }
   };
@@ -370,7 +397,7 @@ export default function App() {
   // Stop navigation and return to normal map view
   const stopNavigation = () => {
     setIsNavigating(false);
-    
+
     // Reset map view
     if (mapRef.current && calculatedPath.length > 0) {
       setTimeout(() => {
@@ -380,7 +407,7 @@ export default function App() {
         });
       }, 500);
     }
-    
+
     // Clean up navigation state
     if (userLocationSubscription) {
       userLocationSubscription.remove();
@@ -393,16 +420,16 @@ export default function App() {
     if (!eta) return "--:--";
     const hours = eta.getHours();
     const minutes = eta.getMinutes();
-    return `${hours}:${minutes < 10 ? '0' : ''}${minutes}`;
+    return `${hours}:${minutes < 10 ? "0" : ""}${minutes}`;
   };
 
   // Function to handle saving the current route
   const handleSaveRoute = async () => {
     if (calculatedPath.length === 0) {
-      Alert.alert('Error', 'No route to save');
+      Alert.alert("Error", "No route to save");
       return;
     }
-    
+
     setShowSaveModal(true);
     setRouteName(`Route ${new Date().toLocaleDateString()}`);
   };
@@ -410,10 +437,10 @@ export default function App() {
   // Function to save route with entered name
   const saveCurrentRoute = async () => {
     if (!routeName.trim()) {
-      Alert.alert('Error', 'Please enter a route name');
+      Alert.alert("Error", "Please enter a route name");
       return;
     }
-    
+
     try {
       await saveRoute({
         name: routeName,
@@ -422,12 +449,12 @@ export default function App() {
         distance: routeDistance,
         duration: routeDuration,
       });
-      
+
       setShowSaveModal(false);
-      Alert.alert('Success', 'Route saved successfully');
+      Alert.alert("Success", "Route saved successfully");
     } catch (error) {
-      console.error('Error saving route:', error);
-      Alert.alert('Error', 'Failed to save route');
+      console.error("Error saving route:", error);
+      Alert.alert("Error", "Failed to save route");
     }
   };
 
@@ -437,7 +464,7 @@ export default function App() {
     setCalculatedPath(route.calculatedPath || []);
     setRouteDistance(route.distance);
     setRouteDuration(route.duration);
-    
+
     // Fit map to the loaded route
     if (mapRef.current && route.calculatedPath?.length > 0) {
       setTimeout(() => {
@@ -452,9 +479,9 @@ export default function App() {
   // If showing history screen, render that instead of main app
   if (showHistoryScreen) {
     return (
-      <RouteHistoryScreen 
-        navigation={{ 
-          goBack: () => setShowHistoryScreen(false) 
+      <RouteHistoryScreen
+        navigation={{
+          goBack: () => setShowHistoryScreen(false),
         }}
         onSelectRoute={loadSavedRoute}
       />
@@ -462,7 +489,7 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle={isNavigating ? "light-content" : "dark-content"} />
       <MapView
         key={mapKey} // Add key prop to force re-render when it changes
@@ -472,24 +499,28 @@ export default function App() {
         showsUserLocation={true}
         followsUserLocation={isNavigating}
         showsCompass={isNavigating}
-        scrollEnabled={!isDrawing && !isNavigating} // Disable panning while drawing
-        zoomEnabled={!isDrawing && !isNavigating} // Disable zooming while drawing
+        scrollEnabled={!isDrawing} // Disable panning while drawing
+        zoomEnabled={!isDrawing} // Disable zooming while drawing
         rotateEnabled={isNavigating}
         pitchEnabled={isNavigating}
         onPanDrag={isDrawing ? handleMapDrag : null}
         onPress={isDrawing ? handleMapPress : null}
-        mapPadding={isNavigating ? { top: 0, right: 0, bottom: 200, left: 0 } : null}
+        mapPadding={
+          isNavigating ? { top: 0, right: 0, bottom: 200, left: 0 } : null
+        }
       >
         {/* Show drawn path based on the toggle state when a calculated route exists */}
-        {drawnPath.length > 0 && !isNavigating && (showOriginalPath || calculatedPath.length === 0) && (
-          <Polyline
-            coordinates={drawnPath}
-            strokeColor="#F00"
-            strokeWidth={3}
-            lineDashPattern={[1]}
-          />
-        )}
-        
+        {drawnPath.length > 0 &&
+          !isNavigating &&
+          (showOriginalPath || calculatedPath.length === 0) && (
+            <Polyline
+              coordinates={drawnPath}
+              strokeColor="#F00"
+              strokeWidth={3}
+              lineDashPattern={[1]}
+            />
+          )}
+
         {/* Calculated path and markers... */}
         {calculatedPath.length > 0 && (
           <Polyline
@@ -501,12 +532,12 @@ export default function App() {
             zIndex={1}
           />
         )}
-        
+
         {/* Keep the start/end markers visible regardless */}
-        {drawnPath.length > 0 && !isNavigating && (
+        {drawnPath.length > 0 && (
           <Marker coordinate={drawnPath[0]} pinColor="green" title="Start" />
         )}
-        {drawnPath.length > 1 && !isNavigating && (
+        {drawnPath.length > 1 && (
           <Marker
             coordinate={drawnPath[drawnPath.length - 1]}
             pinColor="red"
@@ -516,7 +547,7 @@ export default function App() {
 
         {/* Current navigation step marker */}
         {isNavigating && navigationSteps.length > currentStep && (
-          <Marker 
+          <Marker
             coordinate={navigationSteps[currentStep].point}
             anchor={{ x: 0.5, y: 0.5 }}
           >
@@ -533,34 +564,38 @@ export default function App() {
           {/* Top bar with current instruction */}
           <View style={styles.navigationHeader}>
             <View style={styles.directionContainer}>
-              <MaterialIcons 
-                name={getNavigationIcon(navigationSteps[currentStep].instruction)} 
-                size={36} 
-                color="white" 
+              <MaterialIcons
+                name={getNavigationIcon(
+                  navigationSteps[currentStep].instruction
+                )}
+                size={36}
+                color="white"
               />
               <Text style={styles.directionText}>
                 {navigationSteps[currentStep].instruction}
               </Text>
             </View>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.exitNavButton}
               onPress={stopNavigation}
             >
               <MaterialIcons name="close" size={24} color="white" />
             </TouchableOpacity>
           </View>
-          
+
           {/* Bottom information card */}
           <View style={styles.navigationInfo}>
             <View style={styles.navigationDetail}>
               <Text style={styles.distanceText}>
-                {remainingDistance ? formatDistance(remainingDistance) : "Calculating..."}
+                {remainingDistance
+                  ? formatDistance(remainingDistance)
+                  : "Calculating..."}
               </Text>
               <Text style={styles.etaText}>
                 ETA {eta ? formatETA(eta) : "--:--"}
               </Text>
             </View>
-            
+
             {/* Next step preview */}
             {currentStep < navigationSteps.length - 1 && (
               <View style={styles.nextDirectionContainer}>
@@ -587,7 +622,7 @@ export default function App() {
                 >
                   <Text style={styles.buttonText}>Draw Route</Text>
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity
                   style={[styles.button, { backgroundColor: "#9C27B0" }]}
                   onPress={() => setShowHistoryScreen(true)}
@@ -604,7 +639,7 @@ export default function App() {
                 >
                   <Text style={styles.buttonText}>Start Navigation</Text>
                 </TouchableOpacity>
-                
+
                 {/* Save route button */}
                 <TouchableOpacity
                   style={[styles.button, { backgroundColor: "#4CAF50" }]}
@@ -627,8 +662,8 @@ export default function App() {
           {calculatedPath.length > 0 && (
             <TouchableOpacity
               style={[
-                styles.button, 
-                { backgroundColor: showOriginalPath ? "#9C27B0" : "#607D8B" }
+                styles.button,
+                { backgroundColor: showOriginalPath ? "#9C27B0" : "#607D8B" },
               ]}
               onPress={toggleOriginalPath}
             >
@@ -647,7 +682,7 @@ export default function App() {
               <Text style={styles.buttonText}>Clear All</Text>
             </TouchableOpacity>
           )}
-          
+
           {calculatedPath.length > 0 && (
             <TouchableOpacity
               style={[styles.button, { backgroundColor: "#9C27B0" }]}
@@ -665,17 +700,30 @@ export default function App() {
         </View>
       )}
 
-      {(routeDistance || routeDuration) && !isNavigating && (
+      {(routeDistance || routeDuration || remainingDistance !== null) && (
         <View style={styles.infoOverlay}>
-          {routeDistance && (
-            <Text style={styles.infoText}>
-              Distance: {formatDistance(routeDistance)}
-            </Text>
-          )}
-          {routeDuration && (
-            <Text style={styles.infoText}>
-              Duration: {formatDuration(routeDuration)}
-            </Text>
+          {remainingDistance !== null ? (
+            <>
+              <Text style={styles.infoText}>
+                Distance: {formatDistance(remainingDistance)}
+              </Text>
+              <Text style={styles.infoText}>
+                ETA: {eta ? formatETA(eta) : "--:--"}
+              </Text>
+            </>
+          ) : (
+            <>
+              {routeDistance && (
+                <Text style={styles.infoText}>
+                  Distance: {formatDistance(routeDistance)}
+                </Text>
+              )}
+              {routeDuration && (
+                <Text style={styles.infoText}>
+                  Duration: {formatDuration(routeDuration)}
+                </Text>
+              )}
+            </>
           )}
         </View>
       )}
@@ -690,13 +738,13 @@ export default function App() {
       <Modal
         visible={showSaveModal}
         transparent={true}
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowSaveModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Save Route</Text>
-            
+
             <TextInput
               style={styles.nameInput}
               value={routeName}
@@ -704,16 +752,16 @@ export default function App() {
               placeholder="Enter a name for this route"
               autoFocus
             />
-            
+
             <View style={styles.modalButtons}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => setShowSaveModal(false)}
               >
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={[styles.modalButton, styles.saveModalButton]}
                 onPress={saveCurrentRoute}
               >
@@ -723,32 +771,32 @@ export default function App() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 // Helper function to get icon based on instruction
 const getNavigationIcon = (instruction) => {
-  if (instruction.includes('north')) return 'arrow-upward';
-  if (instruction.includes('northeast')) return 'north-east';
-  if (instruction.includes('east')) return 'arrow-forward';
-  if (instruction.includes('southeast')) return 'south-east';
-  if (instruction.includes('south')) return 'arrow-downward';
-  if (instruction.includes('southwest')) return 'south-west';
-  if (instruction.includes('west')) return 'arrow-back';
-  if (instruction.includes('northwest')) return 'north-west';
-  if (instruction.includes('Arrive')) return 'place';
-  return 'directions';
+  if (instruction.includes("north")) return "arrow-upward";
+  if (instruction.includes("northeast")) return "north-east";
+  if (instruction.includes("east")) return "arrow-forward";
+  if (instruction.includes("southeast")) return "south-east";
+  if (instruction.includes("south")) return "arrow-downward";
+  if (instruction.includes("southwest")) return "south-west";
+  if (instruction.includes("west")) return "arrow-back";
+  if (instruction.includes("northwest")) return "north-west";
+  if (instruction.includes("Arrive")) return "place";
+  return "directions";
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#fff' 
+  container: {
+    flex: 1,
+    backgroundColor: "#fff",
   },
-  map: { 
-    width: '100%', 
-    height: '100%' 
+  map: {
+    width: "100%",
+    height: "100%",
   },
   buttonContainer: {
     position: "absolute",
@@ -804,97 +852,97 @@ const styles = StyleSheet.create({
   infoText: { color: "white", fontSize: 14, marginVertical: 2 },
   // Navigation mode styles
   navigationOverlay: {
-    position: 'absolute',
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
   },
   navigationHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#147EFB',
+    flexDirection: "row",
+    backgroundColor: "#147EFB",
     padding: 15,
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    alignItems: "center",
+    justifyContent: "space-between",
     margin: 10,
     borderRadius: 12,
   },
   directionContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     flex: 1,
   },
   directionText: {
-    color: 'white',
+    color: "white",
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: "600",
     marginLeft: 10,
   },
   exitNavButton: {
     padding: 8,
     borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
   navigationInfo: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 15,
     marginHorizontal: 10,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
   },
   navigationDetail: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 10,
   },
   distanceText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: "bold",
+    color: "#333",
   },
   etaText: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
   },
   nextDirectionContainer: {
     borderTopWidth: 1,
-    borderColor: '#eee',
+    borderColor: "#eee",
     paddingTop: 10,
   },
   nextLabel: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
     marginBottom: 5,
   },
   nextDirectionText: {
     fontSize: 14,
-    color: '#333',
+    color: "#333",
   },
   nextStepMarker: {
-    backgroundColor: '#147EFB',
+    backgroundColor: "#147EFB",
     borderRadius: 20,
     padding: 6,
     borderWidth: 2,
-    borderColor: 'white',
+    borderColor: "white",
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
-    width: '80%',
-    backgroundColor: 'white',
+    width: "80%",
+    backgroundColor: "white",
     borderRadius: 12,
     padding: 20,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
@@ -902,38 +950,38 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginBottom: 15,
   },
   nameInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: "#ddd",
     borderRadius: 8,
     padding: 10,
-    width: '100%',
+    width: "100%",
     marginBottom: 20,
     fontSize: 16,
   },
   modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: "100%",
   },
   modalButton: {
     padding: 12,
     borderRadius: 8,
-    width: '48%',
-    alignItems: 'center',
+    width: "48%",
+    alignItems: "center",
   },
   cancelButton: {
-    backgroundColor: '#ccc',
+    backgroundColor: "#ccc",
   },
   saveModalButton: {
-    backgroundColor: '#4CAF50',
+    backgroundColor: "#4CAF50",
   },
   modalButtonText: {
-    color: 'white',
-    fontWeight: 'bold',
+    color: "white",
+    fontWeight: "bold",
     fontSize: 16,
   },
 });
