@@ -179,26 +179,6 @@ function resamplePath(points, interval) {
   return newPath;
 }
 
-// /**
-//  * Returns the distance between two lat/lng points in meters using the haversine formula.
-//  */
-// function getDistanceMeters(p1, p2) {
-//   const R = 6371000; // Earth's radius in meters
-//   const dLat = toRad(p2.latitude - p1.latitude);
-//   const dLon = toRad(p2.longitude - p1.longitude);
-//   const lat1 = toRad(p1.latitude);
-//   const lat2 = toRad(p2.latitude);
-//   const a =
-//     Math.sin(dLat / 2) ** 2 +
-//     Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-//   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-//   return R * c;
-// }
-
-function toRad(deg) {
-  return (deg * Math.PI) / 180;
-}
-
 /**
  * Simplifies a path using the Ramer–Douglas–Peucker algorithm.
  */
