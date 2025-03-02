@@ -1,7 +1,5 @@
-// pathFinder.js
 import axios from "axios";
-import Constants from 'expo-constants';
-
+import Constants from "expo-constants";
 
 // Replace with your actual API key (store it securely in production)
 const GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.googleMapsApiKey;
@@ -13,7 +11,7 @@ const GOOGLE_MAPS_API_KEY = Constants.expoConfig?.extra?.googleMapsApiKey;
  *  - distance: total distance in meters
  *  - duration: total duration in seconds
  *
- * The drawn path is first resampled every 25 feet (~7.62 meters),
+ * The drawn path is first resampled every ~8 meters,
  * then simplified using the Ramer–Douglas–Peucker algorithm.
  *
  * @param {Array} points - Array of lat/lng coordinates from the drawn path
@@ -26,26 +24,25 @@ export const getPathFromPoints = async (points) => {
   }
 
   try {
-    // Resample the path every 25 feet (7.62 meters)
-    const resampled = resamplePath(points, 10);
-    // Simplify the resampled path
-    const simplified = simplifyPath(resampled, 0.0001);
+    // Resample the path every ~8 meters
+    const resampled = resamplePath(points, 8);
+    // Simplify the resampled path with a slightly higher epsilon to remove minor deviations
+    const simplified = simplifyPath(resampled, 0.00015);
 
     // Use the first and last points as origin and destination
     const origin = simplified[0];
     const destination = simplified[simplified.length - 1];
-    // Use the intermediate points as via-waypoints (up to 8) so that the route is forced to follow the drawing.
+    // Use the intermediate points as via-waypoints (reduce count to 4 for a more consistent route)
     const waypoints = simplified.slice(1, -1);
-    const sampledWaypoints = sampleWaypoints(waypoints, 8);
-    // Prefix each waypoint with "via:" to ensure a single continuous route
+    const sampledWaypoints = sampleWaypoints(waypoints, 4);
+    // Prefix each waypoint with "via:" to force the route to be continuous
     const waypointsStr = sampledWaypoints
       .map((p) => `via:${p.latitude},${p.longitude}`)
       .join("|");
 
     // Call the Google Directions API for walking directions
-    const response = await axios.get(
-      "https://maps.googleapis.com/maps/api/directions/json",
-      {
+    const response = await axios
+      .get("https://maps.googleapis.com/maps/api/directions/json", {
         params: {
           origin: `${origin.latitude},${origin.longitude}`,
           destination: `${destination.latitude},${destination.longitude}`,
@@ -53,18 +50,20 @@ export const getPathFromPoints = async (points) => {
           mode: "walking",
           key: GOOGLE_MAPS_API_KEY,
         },
-      }
-    ).catch((error) => {
-      console.error("Error in getPathFromPoints:", error);
-    });
+      })
+      .catch((error) => {
+        console.error("Error in getPathFromPoints:", error);
+      });
 
     if (response.data.status !== "OK") {
       throw new Error("Directions API error: " + response.data.status);
     }
 
     const route = response.data.routes[0];
-    // Decoded overview_polyline should be a single continuous route
-    const polyline = decodePolyline(route.overview_polyline.points);
+    // Decode the polyline (overview_polyline should be a single continuous route)
+    let polyline = decodePolyline(route.overview_polyline.points);
+    // Smooth the final polyline for a cleaner, continuous appearance
+    polyline = createSmoothPath(polyline);
 
     // Sum distance and duration from all legs
     let totalDistance = 0;
